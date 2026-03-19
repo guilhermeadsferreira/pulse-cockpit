@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
 import type { Action, ActionStatus } from '../../renderer/src/types/ipc'
+import type { AcaoComprometida } from '../prompts/ingestion.prompt'
 
 export class ActionRegistry {
   private pessoasDir: string
@@ -42,16 +43,35 @@ export class ActionRegistry {
     this.write(slug, actions)
   }
 
-  createFromArtifact(slug: string, acoes: string[], artifactFileName: string, date: string): void {
+  createFromArtifact(
+    slug: string,
+    acoes: AcaoComprometida[],
+    artifactFileName: string,
+    date: string,
+    registeredSlugs?: Set<string>,
+  ): void {
     const existing = this.list(slug)
-    const newActions: Action[] = acoes.map((texto, i) => ({
-      id:             `${date}-${slug}-${i}`,
-      personSlug:     slug,
-      texto,
-      status:         'open' as ActionStatus,
-      criadoEm:       date,
-      fonteArtefato:  artifactFileName,
-    }))
+    const newActions: Action[] = acoes.map((acao, i) => {
+      const texto = `${acao.responsavel}: ${acao.descricao}${acao.prazo_iso ? ` até ${acao.prazo_iso}` : ''}`
+      // Infer owner: if responsavel matches the person's slug or "gestor", it's 'gestor'
+      const responsavelSlug = registeredSlugs
+        ? this.inferSlug(acao.responsavel, registeredSlugs)
+        : null
+      const owner = responsavelSlug === slug ? 'liderado' : 'gestor'
+      return {
+        id:               `${date}-${slug}-${i}`,
+        personSlug:       slug,
+        texto,
+        responsavel:      acao.responsavel,
+        responsavel_slug: responsavelSlug,
+        prazo:            acao.prazo_iso ?? null,
+        owner,
+        prioridade:       'media',
+        status:           'open' as ActionStatus,
+        criadoEm:         date,
+        fonteArtefato:    artifactFileName,
+      }
+    })
 
     // Deduplicate by texto to avoid creating the same action twice on re-ingest
     const existingTextos = new Set(existing.map((a) => a.texto.trim().toLowerCase()))
@@ -60,6 +80,17 @@ export class ActionRegistry {
     if (toAdd.length > 0) {
       this.write(slug, [...toAdd, ...existing])
     }
+  }
+
+  private inferSlug(nome: string, registeredSlugs: Set<string>): string | null {
+    const candidate = nome.toLowerCase().replace(/\s+/g, '-')
+    if (registeredSlugs.has(candidate)) return candidate
+    // Try matching by first word (first name)
+    const firstName = candidate.split('-')[0]
+    for (const slug of registeredSlugs) {
+      if (slug.startsWith(firstName)) return slug
+    }
+    return null
   }
 
   private actionsPath(slug: string): string {

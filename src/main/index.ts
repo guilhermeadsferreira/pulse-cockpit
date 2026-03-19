@@ -9,6 +9,7 @@ import { setupWorkspace } from './workspace/WorkspaceSetup'
 import { runClaudePrompt } from './ingestion/ClaudeRunner'
 import { FileWatcher } from './ingestion/FileWatcher'
 import { buildAgendaPrompt, renderAgendaMarkdown, type AgendaAIResult } from './prompts/agenda.prompt'
+import { buildGestorAgendaPrompt, renderGestorAgendaMarkdown, type AgendaGestorAIResult } from './prompts/agenda-gestor.prompt'
 import { buildCyclePrompt, renderCycleMarkdown, type CycleAIResult } from './prompts/cycle.prompt'
 import type { CycleReportParams } from '../renderer/src/types/ipc'
 
@@ -91,8 +92,9 @@ function registerIpcHandlers(): void {
     getRegistry().save(config)
     // If this is a newly registered person, sync any pending inbox items
     if (isNew && fileWatcher) {
-      const count = fileWatcher.reprocessPending(config.slug)
-      if (count > 0) console.log(`[people:save] synced ${count} pending item(s) for "${config.slug}"`)
+      fileWatcher.reprocessPending(config.slug).then((count) => {
+        if (count > 0) console.log(`[people:save] synced ${count} pending item(s) for "${config.slug}"`)
+      })
     }
   })
 
@@ -124,7 +126,20 @@ function registerIpcHandlers(): void {
 
   // ── People: Perfil vivo ───────────────────────────────────
   ipcMain.handle('people:get-perfil', (_event, slug: string) => {
-    return getRegistry().getPerfil(slug)
+    const { workspacePath } = SettingsManager.load()
+    const registry = new PersonRegistry(workspacePath)
+    const perfil = registry.getPerfil(slug)
+    if (!perfil) return null
+    // Inject computed fields so UI doesn't need separate IPC calls
+    const openCount = new ActionRegistry(workspacePath).list(slug).filter((a) => a.status === 'open').length
+    perfil.frontmatter.acoes_pendentes_count = openCount
+    const ultimaIngestao = (perfil.frontmatter.ultima_ingestao as string)
+      || (perfil.frontmatter.ultima_atualizacao as string)?.slice(0, 10)
+      || null
+    perfil.frontmatter.dados_stale = ultimaIngestao
+      ? (Date.now() - new Date(ultimaIngestao).getTime()) > 30 * 24 * 60 * 60 * 1000
+      : false
+    return perfil
   })
 
   // ── Detected people ───────────────────────────────────────
@@ -180,19 +195,40 @@ function registerIpcHandlers(): void {
       .list(slug)
       .filter((a) => a.status === 'open')
       .map((a) => ({ texto: a.texto, criadoEm: a.criadoEm }))
-    const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, pautasAnteriores, openActions })
 
-    const result = await runClaudePrompt(settings.claudeBinPath, prompt, 90_000)
-    if (!result.success || !result.data) {
-      return { success: false, error: result.error || 'Falha ao gerar pauta.' }
+    let markdown: string
+
+    if (person.relacao === 'gestor') {
+      // Pauta com o meu gestor — inclui roll-up do time
+      const liderados = registry.getTeamRollup()
+      const prompt = buildGestorAgendaPrompt({
+        configYaml: configRaw,
+        perfilMd: perfilData.raw,
+        today,
+        liderados,
+        pautasAnteriores,
+        openActions,
+      })
+      const result = await runClaudePrompt(settings.claudeBinPath, prompt, 90_000)
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error || 'Falha ao gerar pauta.' }
+      }
+      const agendaResult = result.data as AgendaGestorAIResult
+      markdown = renderGestorAgendaMarkdown(person.nome, today, agendaResult)
+    } else {
+      // Pauta com liderado, par ou stakeholder — fluxo original
+      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, pautasAnteriores, openActions })
+      const result = await runClaudePrompt(settings.claudeBinPath, prompt, 90_000)
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error || 'Falha ao gerar pauta.' }
+      }
+      const agendaResult = result.data as AgendaAIResult
+      markdown = renderAgendaMarkdown(person.nome, today, agendaResult)
     }
 
-    const agendaResult = result.data as AgendaAIResult
-    const markdown = renderAgendaMarkdown(person.nome, today, agendaResult)
     registry.savePauta(slug, today, markdown)
-
     const filePath = join(settings.workspacePath, 'pessoas', slug, 'pautas', `${today}-pauta.md`)
-    return { success: true, path: filePath, markdown, result: agendaResult }
+    return { success: true, path: filePath, markdown }
   })
 
   ipcMain.handle('ai:cycle-report', async (_event, params: CycleReportParams) => {

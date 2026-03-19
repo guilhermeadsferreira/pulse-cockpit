@@ -39,7 +39,8 @@ Sintetize o ciclo completo desta pessoa com base nos artefatos e no perfil acumu
   "evolucao_frente_ao_cargo": "string",
   "pontos_de_desenvolvimento": ["string"],
   "conclusao_para_calibracao": "string",
-  "flag_promovibilidade": "sim"
+  "flag_promovibilidade": "sim",
+  "evidencias_promovibilidade": ["string"]
 }
 
 Regras:
@@ -49,17 +50,19 @@ Regras:
 - "evolucao_frente_ao_cargo": parágrafo narrativo (3–5 frases) descrevendo a evolução da pessoa frente ao seu nível e cargo esperado. Seja específico e cite evidências.
 - "pontos_de_desenvolvimento": áreas concretas de desenvolvimento identificadas, com evidências do período.
 - "conclusao_para_calibracao": parágrafo conclusivo (3–5 frases) pronto para ser lido no fórum. Deve incluir recomendação clara: acima das expectativas / dentro das expectativas / abaixo das expectativas.
-- "flag_promovibilidade": "sim" se há evidências claras para promoção neste ciclo, "nao" se não há, "avaliar" se há potencial mas requer mais evidências ou mais tempo.`
+- "flag_promovibilidade": "sim" se há evidências claras para promoção neste ciclo, "nao" se não há, "avaliar" se há potencial mas requer mais evidências ou mais tempo.
+- "evidencias_promovibilidade": 3–5 bullets de evidência concreta que sustentam o flag_promovibilidade. Cada bullet deve ser autônomo e citável no fórum: descreva um fato específico (entrega, comportamento, feedback de terceiro) com data ou contexto. Se flag_promovibilidade for "nao", liste as lacunas ou áreas que ainda precisam ser demonstradas para uma futura promoção. Nunca retorne array vazio — sempre há algo a dizer.`
 }
 
 export interface CycleAIResult {
-  linha_do_tempo:           Array<{ data: string; evento: string }>
-  entregas_e_conquistas:    string[]
-  padroes_de_comportamento: string[]
-  evolucao_frente_ao_cargo: string
-  pontos_de_desenvolvimento: string[]
-  conclusao_para_calibracao: string
-  flag_promovibilidade:     'sim' | 'nao' | 'avaliar'
+  linha_do_tempo:             Array<{ data: string; evento: string }>
+  entregas_e_conquistas:      string[]
+  padroes_de_comportamento:   string[]
+  evolucao_frente_ao_cargo:   string
+  pontos_de_desenvolvimento:  string[]
+  conclusao_para_calibracao:  string
+  flag_promovibilidade:       'sim' | 'nao' | 'avaliar'
+  evidencias_promovibilidade: string[]
 }
 
 export function renderCycleMarkdown(
@@ -85,6 +88,14 @@ export function renderCycleMarkdown(
     ``,
     `**Promovibilidade:** ${promoLabel}`,
     ``,
+    ...(result.evidencias_promovibilidade?.length > 0
+      ? [
+          `**Evidências:**`,
+          ``,
+          ...result.evidencias_promovibilidade.map(e => `- ${e}`),
+          ``,
+        ]
+      : []),
     `---`,
     ``,
     `## Linha do Tempo`,

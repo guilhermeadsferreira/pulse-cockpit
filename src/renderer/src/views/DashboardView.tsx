@@ -146,22 +146,33 @@ export function DashboardView({ relacao = 'liderado' }: { relacao?: string }) {
             {people.length === 0 && detected.length === 0 ? (
               <EmptyState onAdd={() => navigate('person-form', { defaultRelacao: relacao })} />
             ) : people.length > 0 ? (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 10,
-              }}>
-                {people.map((p) => (
-                  <PersonCard
-                    key={p.slug}
-                    person={p}
-                    perfil={perfis[p.slug] ?? {}}
-                    actions={actionsMap[p.slug] ?? []}
-                    onViewCockpit={() => navigate('person', { slug: p.slug })}
-                    onEdit={() => navigate('person-form', { slug: p.slug })}
+              <>
+                {/* Risk panel — only for liderados with signals */}
+                {relacao === 'liderado' && (
+                  <TeamRiskPanel
+                    people={people}
+                    perfis={perfis}
+                    actionsMap={actionsMap}
+                    onNavigate={(slug) => navigate('person', { slug })}
                   />
-                ))}
-              </div>
+                )}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 10,
+                }}>
+                  {people.map((p) => (
+                    <PersonCard
+                      key={p.slug}
+                      person={p}
+                      perfil={perfis[p.slug] ?? {}}
+                      actions={actionsMap[p.slug] ?? []}
+                      onViewCockpit={() => navigate('person', { slug: p.slug })}
+                      onEdit={() => navigate('person-form', { slug: p.slug })}
+                    />
+                  ))}
+                </div>
+              </>
             ) : null}
 
             {/* Detected (unregistered) people */}
@@ -515,6 +526,117 @@ function DetectedRow({
       }}>
         <X size={11} />
       </button>
+    </div>
+  )
+}
+
+// ─── T4.4 — Team Risk Panel ───────────────────────────────────
+type RiskItem = { slug: string; nome: string; cargo: string; motivos: string[] }
+
+function TeamRiskPanel({
+  people,
+  perfis,
+  actionsMap,
+  onNavigate,
+}: {
+  people: PersonConfig[]
+  perfis: Record<string, Partial<PerfilFrontmatter>>
+  actionsMap: Record<string, Action[]>
+  onNavigate: (slug: string) => void
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+
+  const atRisk: RiskItem[] = people
+    .map((p) => {
+      const fm = perfis[p.slug] ?? {}
+      const actions = actionsMap[p.slug] ?? []
+      const motivos: string[] = []
+
+      if (fm.dados_stale) {
+        motivos.push('sem dados há 30+ dias')
+        return { slug: p.slug, nome: p.nome, cargo: p.cargo, motivos }
+      }
+
+      if (fm.saude === 'vermelho') motivos.push('saúde vermelho')
+      if (fm.necessita_1on1)       motivos.push('1:1 urgente')
+
+      // T4.1: 1:1 frequency alert
+      if (fm.ultimo_1on1) {
+        const dias = Math.floor((Date.now() - new Date(fm.ultimo_1on1).getTime()) / 86_400_000)
+        if (dias > (p.frequencia_1on1_dias + 3)) motivos.push(`sem 1:1 há ${dias}d`)
+      } else {
+        motivos.push('nunca teve 1:1')
+      }
+
+      // T4.3: overdue actions (with deadline)
+      const vencidas = actions.filter((a) => a.status === 'open' && a.prazo && a.prazo < today)
+      if (vencidas.length > 0) motivos.push(`${vencidas.length} ação${vencidas.length > 1 ? 'ões' : ''} vencida${vencidas.length > 1 ? 's' : ''}`)
+
+      if (fm.alerta_estagnacao) motivos.push('estagnação detectada')
+
+      return { slug: p.slug, nome: p.nome, cargo: p.cargo, motivos }
+    })
+    .filter((r) => r.motivos.length > 0)
+    .sort((a, b) => b.motivos.length - a.motivos.length)
+
+  if (atRisk.length === 0) return null
+
+  return (
+    <div style={{
+      marginBottom: 24,
+      background: 'rgba(184,64,64,0.05)',
+      border: '1px solid rgba(184,64,64,0.2)',
+      borderRadius: 'var(--r)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '10px 16px',
+        borderBottom: '1px solid rgba(184,64,64,0.15)',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <AlertCircle size={12} color="var(--red)" />
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+          Atenção necessária
+        </span>
+        <span style={{
+          fontSize: 10, padding: '1px 6px', borderRadius: 20,
+          background: 'rgba(184,64,64,0.15)', color: 'var(--red)',
+          fontFamily: 'var(--font-mono)',
+        }}>
+          {atRisk.length}
+        </span>
+      </div>
+      <div style={{ padding: '8px 0' }}>
+        {atRisk.map((r) => (
+          <button
+            key={r.slug}
+            onClick={() => onNavigate(r.slug)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              width: '100%', padding: '7px 16px',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ minWidth: 120 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{r.nome}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{r.cargo}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {r.motivos.map((m) => (
+                <span key={m} style={{
+                  fontSize: 10, padding: '2px 7px', borderRadius: 20,
+                  background: 'rgba(184,64,64,0.08)',
+                  border: '1px solid rgba(184,64,64,0.25)',
+                  color: 'var(--red)', fontWeight: 500,
+                }}>
+                  {m}
+                </span>
+              ))}
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

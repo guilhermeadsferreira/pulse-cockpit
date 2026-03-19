@@ -27,12 +27,12 @@ function getInitials(name: string): string {
 
 export function Sidebar() {
   const { view, navigate } = useRouter()
-  const [profile, setProfile] = useState<{ name: string; role: string; company: string }>({ name: '', role: '', company: '' })
+  const [profile, setProfile] = useState<{ name: string; role: string }>({ name: '', role: '' })
 
   useEffect(() => {
     function loadProfile() {
       window.api.settings.load().then((s) => {
-        setProfile({ name: s.managerName ?? '', role: s.managerRole ?? '', company: s.managerCompany ?? '' })
+        setProfile({ name: s.managerName ?? '', role: s.managerRole ?? '' })
       })
     }
     loadProfile()
@@ -128,12 +128,12 @@ export function Sidebar() {
             }}>
               {displayName}
             </div>
-            {(profile.role || profile.company) && (
+            {profile.role && (
               <div style={{
                 fontSize: 10.5, color: 'var(--text-muted)', marginTop: 1,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {[profile.role, profile.company].filter(Boolean).join(' · ')}
+                {profile.role}
               </div>
             )}
           </div>

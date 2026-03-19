@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import yaml from 'js-yaml'
+import { migrateProfileContent } from '../migration/ProfileMigration'
+import { ActionRegistry } from './ActionRegistry'
 
 export interface PersonConfig {
   schema_version: number
@@ -24,12 +26,32 @@ export interface PersonConfig {
   atualizado_em: string
 }
 
+export interface LideradoSnapshot {
+  slug:                   string
+  nome:                   string
+  cargo:                  string
+  saude:                  'verde' | 'amarelo' | 'vermelho'
+  necessita_1on1:         boolean
+  motivo_1on1:            string | null
+  alerta_estagnacao:      boolean
+  motivo_estagnacao:      string | null
+  sinal_evolucao:         boolean
+  evidencia_evolucao:     string | null
+  acoes_pendentes_count:  number
+  acoes_vencidas_count:   number        // open actions past their deadline
+  precisa_1on1_frequencia: boolean      // overdue by frequency config (no AI needed)
+  dias_sem_1on1:          number | null // days since last 1:1
+  dados_stale:            boolean       // true if no ingestion in 30+ days
+}
+
 const PERSON_SUBDIRS = ['historico', 'pautas']
 
 export class PersonRegistry {
+  private workspacePath: string
   private pessoasDir: string
 
   constructor(workspacePath: string) {
+    this.workspacePath = workspacePath
     this.pessoasDir = join(workspacePath, 'pessoas')
   }
 
@@ -92,7 +114,10 @@ export class PersonRegistry {
   getPerfil(slug: string): { raw: string; frontmatter: Record<string, unknown> } | null {
     const perfilPath = join(this.pessoasDir, slug, 'perfil.md')
     if (!existsSync(perfilPath)) return null
-    const raw = readFileSync(perfilPath, 'utf-8')
+    const rawOriginal = readFileSync(perfilPath, 'utf-8')
+    const raw = migrateProfileContent(rawOriginal)
+    // Persist migration if content changed
+    if (raw !== rawOriginal) writeFileSync(perfilPath, raw, 'utf-8')
     const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/)
     if (!fmMatch) return { raw, frontmatter: {} }
     try {
@@ -103,7 +128,7 @@ export class PersonRegistry {
     }
   }
 
-  listArtifacts(slug: string): Array<{ fileName: string; tipo: string; date: string; path: string }> {
+  listArtifacts(slug: string): Array<{ fileName: string; titulo: string; tipo: string; date: string; path: string }> {
     const historicoDir = join(this.pessoasDir, slug, 'historico')
     if (!existsSync(historicoDir)) return []
     try {
@@ -126,7 +151,9 @@ export class PersonRegistry {
           }
           const stat = statSync(filePath)
           if (!date) date = stat.mtime.toISOString().slice(0, 10)
-          return { fileName, tipo, date, path: filePath }
+          const h1Match = content.match(/^# (.+)$/m)
+          const titulo = h1Match ? h1Match[1].trim() : fileName
+          return { fileName, titulo, tipo, date, path: filePath }
         })
         .sort((a, b) => b.date.localeCompare(a.date)) // newest first
     } catch {
@@ -211,9 +238,9 @@ export class PersonRegistry {
     }
   }
 
-  listAllArtifacts(): Array<{ fileName: string; tipo: string; date: string; path: string; personSlug: string; personNome: string; resumo: string }> {
+  listAllArtifacts(): Array<{ fileName: string; titulo: string; tipo: string; date: string; path: string; personSlug: string; personNome: string; resumo: string }> {
     const people = this.list()
-    const all: Array<{ fileName: string; tipo: string; date: string; path: string; personSlug: string; personNome: string; resumo: string }> = []
+    const all: Array<{ fileName: string; titulo: string; tipo: string; date: string; path: string; personSlug: string; personNome: string; resumo: string }> = []
     for (const person of people) {
       const artifacts = this.listArtifacts(person.slug).map((a) => ({
         ...a,
@@ -223,7 +250,65 @@ export class PersonRegistry {
       }))
       all.push(...artifacts)
     }
+    // Include collective artifacts (_coletivo)
+    const collectiveArtifacts = this.listArtifacts('_coletivo').map((a) => ({
+      ...a,
+      personSlug: '_coletivo',
+      personNome: 'Reunião Coletiva',
+      resumo: this.extractResumo(a.path),
+    }))
+    all.push(...collectiveArtifacts)
+
     return all.sort((a, b) => b.date.localeCompare(a.date))
+  }
+
+  /**
+   * Snapshot de saúde de todos os liderados diretos.
+   * Usado para gerar a pauta de 1:1 com o gestor (roll-up de time).
+   */
+  getTeamRollup(): LideradoSnapshot[] {
+    const actionRegistry = new ActionRegistry(this.workspacePath)
+    return this.list()
+      .filter((p) => p.relacao === 'liderado')
+      .map((p) => {
+        const perfil = this.getPerfil(p.slug)
+        const fm = perfil?.frontmatter ?? {}
+        const hoje = new Date().toISOString().slice(0, 10)
+
+        const ultimaIngestao = (fm.ultima_ingestao as string) || (fm.ultima_atualizacao as string)?.slice(0, 10) || null
+        const dadosStale = ultimaIngestao
+          ? (Date.now() - new Date(ultimaIngestao).getTime()) > 30 * 24 * 60 * 60 * 1000
+          : false
+
+        const ultimo1on1 = (fm.ultimo_1on1 as string) || null
+        const diasSem1on1 = ultimo1on1
+          ? Math.floor((Date.now() - new Date(ultimo1on1).getTime()) / 86_400_000)
+          : null
+        const frequencia = p.frequencia_1on1_dias ?? 14
+        const precisa1on1Frequencia = diasSem1on1 !== null && diasSem1on1 > (frequencia + 3)
+
+        const todasAcoes = actionRegistry.list(p.slug)
+        const acoesPendentes = todasAcoes.filter((a) => a.status === 'open').length
+        const acoesVencidas  = todasAcoes.filter((a) => a.status === 'open' && a.prazo != null && a.prazo < hoje).length
+
+        return {
+          slug:                   p.slug,
+          nome:                   p.nome,
+          cargo:                  p.cargo,
+          saude:                  (fm.saude as LideradoSnapshot['saude']) ?? 'verde',
+          necessita_1on1:         Boolean(fm.necessita_1on1),
+          motivo_1on1:            (fm.motivo_1on1 as string) || null,
+          alerta_estagnacao:      Boolean(fm.alerta_estagnacao),
+          motivo_estagnacao:      (fm.motivo_estagnacao as string) || null,
+          sinal_evolucao:         Boolean(fm.sinal_evolucao),
+          evidencia_evolucao:     (fm.evidencia_evolucao as string) || null,
+          acoes_pendentes_count:  acoesPendentes,
+          acoes_vencidas_count:   acoesVencidas,
+          precisa_1on1_frequencia: precisa1on1Frequencia,
+          dias_sem_1on1:          diasSem1on1,
+          dados_stale:            dadosStale,
+        }
+      })
   }
 
   private extractResumo(filePath: string): string {

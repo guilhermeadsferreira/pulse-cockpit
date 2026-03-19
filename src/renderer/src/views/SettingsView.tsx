@@ -93,14 +93,6 @@ export function SettingsView() {
                 placeholder="Ex: Gerente de Engenharia"
               />
             </Field>
-            <Field label="Empresa">
-              <input
-                style={styles.input}
-                value={form.managerCompany ?? ''}
-                onChange={(e) => set('managerCompany', e.target.value)}
-                placeholder="Ex: Acme Corp"
-              />
-            </Field>
           </Section>
 
           {/* Workspace */}

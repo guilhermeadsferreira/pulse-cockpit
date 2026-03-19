@@ -184,24 +184,33 @@ function FeedCard({ item, onViewPerson }: { item: ArtifactFeedItem; onViewPerson
           {fmtDate(item.date)}
         </span>
 
-        {/* Person name — clickable */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onViewPerson() }}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-            fontSize: 12.5, fontWeight: 600, color: 'var(--accent)',
-            whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'var(--font)',
-          }}
-        >
-          {item.personNome}
-        </button>
+        {/* Person name — clickable (not for collective) */}
+        {item.personSlug === '_coletivo' ? (
+          <span style={{
+            fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)',
+            whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            {item.personNome}
+          </span>
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); onViewPerson() }}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontSize: 12.5, fontWeight: 600, color: 'var(--accent)',
+              whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'var(--font)',
+            }}
+          >
+            {item.personNome}
+          </button>
+        )}
 
-        {/* Resumo preview */}
+        {/* Título / resumo preview */}
         <span style={{
           flex: 1, fontSize: 12.5, color: 'var(--text-secondary)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {item.resumo || item.fileName}
+          {item.titulo || item.resumo || item.fileName}
         </span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>

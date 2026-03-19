@@ -8,7 +8,6 @@ export interface AppSettings {
   claudeBinPath: string
   managerName?: string
   managerRole?: string
-  managerCompany?: string
 }
 
 const SETTINGS_DIR  = join(homedir(), '.pulsecockpit')
@@ -34,7 +33,6 @@ const DEFAULTS: AppSettings = {
   claudeBinPath:  detectClaudeBin(),
   managerName:    '',
   managerRole:    '',
-  managerCompany: '',
 }
 
 export const SettingsManager = {

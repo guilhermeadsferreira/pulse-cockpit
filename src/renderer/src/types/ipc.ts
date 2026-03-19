@@ -6,7 +6,6 @@ export interface AppSettings {
   claudeBinPath: string
   managerName?: string
   managerRole?: string
-  managerCompany?: string
 }
 
 export type PersonLevel   = 'junior' | 'pleno' | 'senior' | 'staff' | 'principal' | 'manager'
@@ -52,6 +51,7 @@ export interface ArtifactMeta {
 export interface ArtifactFeedItem {
   path:       string
   fileName:   string
+  titulo:     string
   tipo:       string
   date:       string
   personSlug: string
@@ -63,9 +63,10 @@ export interface PerfilFrontmatter {
   slug:                  string
   schema_version:        number
   ultima_atualizacao:    string
+  ultima_ingestao?:      string        // date YYYY-MM-DD — set on every successful ingestion
   total_artefatos:       number
   ultimo_1on1:           string | null
-  acoes_pendentes_count: number
+  acoes_pendentes_count: number        // computed from ActionRegistry (injected in IPC handler)
   alertas_ativos:        string[]
   saude:                 'verde' | 'amarelo' | 'vermelho'
   necessita_1on1:        boolean
@@ -74,19 +75,27 @@ export interface PerfilFrontmatter {
   motivo_estagnacao:     string | null
   sinal_evolucao:        boolean
   evidencia_evolucao:    string | null
+  dados_stale?:          boolean       // true if no ingestion in 30+ days
 }
 
-export type ActionStatus = 'open' | 'done' | 'cancelled'
+export type ActionStatus   = 'open' | 'in_progress' | 'done' | 'cancelled'
+export type ActionOwner    = 'gestor' | 'liderado' | 'terceiro'
+export type ActionPriority = 'baixa' | 'media' | 'alta'
 
 export interface Action {
-  id:             string
-  personSlug:     string
-  texto:          string
-  status:         ActionStatus
-  criadoEm:       string
-  prazo?:         string
-  concluidoEm?:   string
-  fonteArtefato?: string
+  id:               string
+  personSlug:       string
+  texto:            string
+  status:           ActionStatus
+  criadoEm:         string
+  // Structured fields (populated from T1.3 schema)
+  responsavel?:     string           // nome legível do responsável
+  responsavel_slug?: string | null   // slug se for pessoa cadastrada
+  prazo?:           string | null    // YYYY-MM-DD
+  owner?:           ActionOwner      // quem executa a ação
+  prioridade?:      ActionPriority
+  concluidoEm?:     string | null
+  fonteArtefato?:   string
 }
 
 export interface PerfilData {

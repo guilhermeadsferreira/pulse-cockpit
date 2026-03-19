@@ -24,6 +24,22 @@ pm-agent/projects/mgr-cockpit/
 
 ---
 
+## Tasks locais (auditoria técnica)
+
+Este repo mantém um diretório `/tasks` com o plano de execução da auditoria técnica (TECH.md):
+
+```
+tasks/
+├── backlog.md    ← tarefas identificadas na auditoria, ainda não iniciadas
+├── active.md     ← tarefas em andamento
+├── done.md       ← tarefas concluídas (com data e resultado)
+└── sequencia.md  ← sequência de execução recomendada (Fase 1 → 2 → 3)
+```
+
+Estas tasks são independentes do pm-agent — rastreiam issues técnicas (bugs, débito, arquitetura), não features de produto.
+
+---
+
 ## Living Documentation
 
 A documentação de produto vive **no PM Agent**, não neste repo.

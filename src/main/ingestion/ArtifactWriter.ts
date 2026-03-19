@@ -28,12 +28,15 @@ export class ArtifactWriter {
    * Saves the artifact to pessoas/{slug}/historico/{date}-{slug}.md
    * with a formatted template (AI analysis + original content) and returns the file name.
    */
-  writeArtifact(slug: string, result: IngestionAIResult, rawContent: string): string {
+  writeArtifact(slug: string, result: IngestionAIResult, rawContent: string, fileNameOverride?: string): string {
     const { tipo, data_artefato: date, resumo, acoes_comprometidas, pontos_de_atencao,
             elogios_e_conquistas, temas_detectados, motivo_indicador, indicador_saude } = result
 
-    const fileName = `${date}-${slug}.md`
+    const fileName = fileNameOverride ?? `${date}-${slug}.md`
     const dest = join(this.pessoasDir, slug, 'historico', fileName)
+
+    const titulo = result.titulo ?? `${tipoLabel(tipo)} — ${slug} · ${date}`
+    const participantes = result.participantes_nomes ?? []
 
     const lines: string[] = [
       `---`,
@@ -43,16 +46,25 @@ export class ArtifactWriter {
       `saude: ${indicador_saude}`,
       `---`,
       ``,
-      `# ${tipoLabel(tipo)} — ${slug} · ${date}`,
-      ``,
-      `## Resumo`,
-      resumo,
+      `# ${titulo}`,
       ``,
     ]
 
+    if (participantes.length > 0) {
+      lines.push(`**Participantes:** ${participantes.join(', ')}`)
+      lines.push(``)
+    }
+
+    lines.push(`## Resumo`)
+    lines.push(resumo)
+    lines.push(``)
+
     if (acoes_comprometidas.length > 0) {
       lines.push(`## Ações Comprometidas`)
-      acoes_comprometidas.forEach((a) => lines.push(`- [ ] ${a}`))
+      acoes_comprometidas.forEach((a) => {
+        const prazo = a.prazo_iso ? ` até ${a.prazo_iso}` : ''
+        lines.push(`- [ ] **${a.responsavel}:** ${a.descricao}${prazo}`)
+      })
       lines.push(``)
     }
 
@@ -92,6 +104,7 @@ export class ArtifactWriter {
     if (result.acoes_comprometidas.length > 0) {
       this.actionRegistry.createFromArtifact(slug, result.acoes_comprometidas, fileName, result.data_artefato)
     }
+
 
     return fileName
   }
@@ -133,21 +146,21 @@ export class ArtifactWriter {
     now: string,
     today: string,
   ): string {
-    const acoesLines   = result.acoes_comprometidas.map((a) => `- [ ] ${a}`).join('\n') || '- [ ] (sem ações comprometidas)'
+    const acoesLines   = result.acoes_comprometidas.map((a) => {
+      const prazo = a.prazo_iso ? ` até ${a.prazo_iso}` : ''
+      return `- [ ] **${a.responsavel}:** ${a.descricao}${prazo}`
+    }).join('\n') || '- [ ] (sem ações comprometidas)'
     const atencaoLines = result.pontos_de_atencao.map((p) => `- **${today}:** ${p}`).join('\n') || ''
     const elogioLines  = result.elogios_e_conquistas.map((e) => `- **${today}:** ${e}`).join('\n') || ''
     const temasLines   = result.temas_atualizados.map((t) => `- ${t}`).join('\n') || ''
 
-    // Count pending actions
-    const pendingCount = result.acoes_comprometidas.length
-
     return `---
 slug: "${slug}"
-schema_version: 1
+schema_version: 2
 ultima_atualizacao: "${now}"
+ultima_ingestao: "${today}"
 total_artefatos: 1
 ultimo_1on1: ${result.tipo === '1on1' ? `"${result.data_artefato}"` : 'null'}
-acoes_pendentes_count: ${pendingCount}
 alertas_ativos: []
 saude: "${result.indicador_saude}"
 necessita_1on1: ${result.necessita_1on1 ?? false}
@@ -207,11 +220,18 @@ ${SECTION.historico.close}
 
     // 3. Append Ações Pendentes
     if (result.acoes_comprometidas.length > 0) {
-      const newLines = result.acoes_comprometidas.map((a) => `- [ ] ${a}`).join('\n')
+      const newLines = result.acoes_comprometidas.map((a) => {
+        const prazo = a.prazo_iso ? ` até ${a.prazo_iso}` : ''
+        return `- [ ] **${a.responsavel}:** ${a.descricao}${prazo}`
+      }).join('\n')
       updated = this.appendToBlock(updated, 'acoes', newLines)
     }
 
-    // 4. Append Pontos de Atenção
+    // 4. Mark resolved attention points, then append new ones
+    const resolvidos = result.pontos_resolvidos ?? []
+    if (resolvidos.length > 0) {
+      updated = this.markResolvedPoints(updated, resolvidos, today)
+    }
     if (result.pontos_de_atencao.length > 0) {
       const newLines = result.pontos_de_atencao.map((p) => `- **${today}:** ${p}`).join('\n')
       updated = this.appendToBlock(updated, 'atencao', newLines)
@@ -240,14 +260,21 @@ ${SECTION.historico.close}
 
     let fm = fmMatch[1]
 
-    // ultima_atualizacao
+    // ultima_atualizacao + ultima_ingestao
     fm = fm.replace(/ultima_atualizacao:.*/, `ultima_atualizacao: "${now}"`)
+    const today = now.slice(0, 10)
+    if (/ultima_ingestao:/.test(fm)) {
+      fm = fm.replace(/ultima_ingestao:.*/, `ultima_ingestao: "${today}"`)
+    } else {
+      fm = fm.replace(/ultima_atualizacao:.*/, `ultima_atualizacao: "${now}"\nultima_ingestao: "${today}"`)
+    }
 
     // total_artefatos: increment
     fm = fm.replace(/total_artefatos:\s*(\d+)/, (_, n) => `total_artefatos: ${parseInt(n) + 1}`)
 
-    // ultimo_1on1: only update if this artifact is a 1on1
-    if (result.tipo === '1on1') {
+    // ultimo_1on1: update for explicit 1:1s or for any bilateral artifact where no urgent 1:1 is needed
+    // (covers informal 1:1s that happened inside meetings)
+    if (result.tipo === '1on1' || result.necessita_1on1 === false) {
       fm = fm.replace(/ultimo_1on1:.*/, `ultimo_1on1: "${result.data_artefato}"`)
     }
 
@@ -284,11 +311,6 @@ ${SECTION.historico.close}
       fm += `\nsinal_evolucao: ${evolucao}\nevidencia_evolucao: ${evidencia}`
     }
 
-    // acoes_pendentes_count: recalculate from block
-    const acoesBlock = this.extractBlock(content, 'acoes')
-    const pending = (acoesBlock.match(/- \[ \]/g) || []).length + result.acoes_comprometidas.length
-    fm = fm.replace(/acoes_pendentes_count:\s*\d+/, `acoes_pendentes_count: ${pending}`)
-
     return content.replace(/^---\n[\s\S]*?\n---/, `---\n${fm}\n---`)
   }
 
@@ -314,6 +336,29 @@ ${SECTION.historico.close}
       return content.replace(re, `\n${newLines}$1`)
     }
     return content
+  }
+
+  /**
+   * Marks resolved attention points with strikethrough in the atencao block.
+   * Matches by looking for lines containing resolved text (substring match, case-insensitive).
+   */
+  private markResolvedPoints(content: string, resolvidos: string[], today: string): string {
+    const { open, close } = SECTION.atencao
+    const escapedOpen  = open.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const escapedClose = close.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`(${escapedOpen}\n)([\\s\\S]*?)(\n${escapedClose})`)
+    return content.replace(re, (_match, blockOpen, body, blockClose) => {
+      const lines = body.split('\n')
+      const marked = lines.map((line: string) => {
+        if (line.startsWith('~~')) return line // already resolved
+        const isResolved = resolvidos.some((r) =>
+          line.toLowerCase().includes(r.slice(0, 40).toLowerCase())
+        )
+        if (isResolved) return `~~${line}~~ ✓ *(resolvido em ${today})*`
+        return line
+      })
+      return `${blockOpen}${marked.join('\n')}${blockClose}`
+    })
   }
 
   private extractBlock(content: string, blockKey: keyof typeof SECTION): string {
