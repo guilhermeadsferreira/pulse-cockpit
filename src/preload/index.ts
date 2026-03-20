@@ -47,6 +47,12 @@ contextBridge.exposeInMainWorld('api', {
     open: (filePath: string) => ipcRenderer.invoke('shell:open', filePath),
   },
 
+  update: {
+    onStatus:        (cb: (data: unknown) => void) => ipcRenderer.on('update:status', (_, d) => cb(d)),
+    install:         ()                            => ipcRenderer.invoke('update:install'),
+    removeListeners: ()                            => ipcRenderer.removeAllListeners('update:status'),
+  },
+
   ingestion: {
     onStarted:       (cb: (e: unknown) => void) => ipcRenderer.on('ingestion:started',   (_, d) => cb(d)),
     onCompleted:     (cb: (e: unknown) => void) => ipcRenderer.on('ingestion:completed', (_, d) => cb(d)),

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { writeFileSync, readFileSync } from 'fs'
 import { SettingsManager } from './registry/SettingsManager'
@@ -281,6 +282,39 @@ function registerIpcHandlers(): void {
   ipcMain.handle('shell:open', (_event, filePath: string) => {
     return shell.openPath(filePath)
   })
+
+  // ── Auto-update ───────────────────────────────────────────
+  ipcMain.handle('update:install', () => {
+    autoUpdater.quitAndInstall()
+  })
+}
+
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) return  // só roda em produção
+
+  autoUpdater.autoDownload    = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update:status', { phase: 'available', version: info.version })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update:status', {
+      phase: 'downloading',
+      progress: Math.round(progress.percent),
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.webContents.send('update:status', { phase: 'ready', version: info.version })
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater]', err.message)
+  })
+
+  autoUpdater.checkForUpdates()
 }
 
 app.whenReady().then(async () => {
@@ -292,6 +326,8 @@ app.whenReady().then(async () => {
   // Start FileWatcher after window is created
   fileWatcher = new FileWatcher(settings.workspacePath)
   fileWatcher.start()
+
+  setupAutoUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

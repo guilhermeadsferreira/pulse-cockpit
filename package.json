@@ -42,12 +42,18 @@
       }
     },
     "extraResources": [],
-    "asar": true
+    "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "guilhermeadsferreira",
+      "repo": "mgr-cockpit"
+    }
   },
   "dependencies": {
     "chokidar": "^3.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.3",
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.475.0",
     "pdf-parse": "^1.1.1",

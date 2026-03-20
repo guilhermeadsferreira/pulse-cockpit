@@ -56,7 +56,19 @@ declare global {
       shell: {
         open: (filePath: string) => Promise<void>
       }
+
+      update: {
+        onStatus:        (cb: (data: UpdateStatus) => void) => void
+        install:         () => Promise<void>
+        removeListeners: () => void
+      }
     }
+  }
+
+  interface UpdateStatus {
+    phase:    'available' | 'downloading' | 'ready'
+    version?: string
+    progress?: number
   }
 
   interface ClaudeTestResult {
