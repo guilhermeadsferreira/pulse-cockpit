@@ -1,8 +1,18 @@
 import { type ReactNode, useState, useEffect } from 'react'
-import { Download, RefreshCw } from 'lucide-react'
+import { Download, RefreshCw, X, AlertTriangle } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 
-function UpdateBanner({ update }: { update: UpdateStatus }) {
+function UpdateBanner({ update, onDismiss }: { update: UpdateStatus; onDismiss: () => void }) {
+  const dismissBtn = (
+    <button
+      onClick={onDismiss}
+      title="Dispensar"
+      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 2px', marginLeft: 'auto', display: 'flex', alignItems: 'center' }}
+    >
+      <X size={12} />
+    </button>
+  )
+
   if (update.phase === 'available') {
     return (
       <div style={{
@@ -13,9 +23,8 @@ function UpdateBanner({ update }: { update: UpdateStatus }) {
         fontSize: 12, color: 'var(--text-secondary)',
       }}>
         <Download size={13} style={{ color: 'var(--blue, #3c82f6)', flexShrink: 0 }} />
-        <span>
-          Nova versão {update.version} encontrada — baixando em segundo plano…
-        </span>
+        <span>Nova versão {update.version} encontrada — baixando em segundo plano…</span>
+        {dismissBtn}
       </div>
     )
   }
@@ -41,6 +50,7 @@ function UpdateBanner({ update }: { update: UpdateStatus }) {
             transition: 'width 0.3s ease',
           }} />
         </div>
+        {dismissBtn}
       </div>
     )
   }
@@ -59,19 +69,30 @@ function UpdateBanner({ update }: { update: UpdateStatus }) {
         <button
           onClick={() => window.api.update.install()}
           style={{
-            marginLeft: 4,
-            padding: '2px 10px',
-            background: 'var(--green)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: 'pointer',
+            marginLeft: 4, padding: '2px 10px',
+            background: 'var(--green)', color: '#fff',
+            border: 'none', borderRadius: 4,
+            fontSize: 11, fontWeight: 600, cursor: 'pointer',
           }}
         >
           Reiniciar agora
         </button>
+      </div>
+    )
+  }
+
+  if (update.phase === 'error') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '7px 16px',
+        background: 'rgba(184,64,64,0.08)',
+        borderBottom: '1px solid rgba(184,64,64,0.25)',
+        fontSize: 12, color: 'var(--text-secondary)',
+      }}>
+        <AlertTriangle size={13} style={{ color: 'var(--red)', flexShrink: 0 }} />
+        <span>Falha ao baixar atualização. O app continuará funcionando normalmente.</span>
+        {dismissBtn}
       </div>
     )
   }
@@ -83,7 +104,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const [update, setUpdate] = useState<UpdateStatus | null>(null)
 
   useEffect(() => {
-    window.api.update.onStatus((data) => setUpdate(data))
+    // Registra listener para eventos futuros
+    window.api.update.onStatus((data) => setUpdate(data as UpdateStatus))
+
+    // Recupera estado atual — resolve race condition se evento disparou antes do mount
+    window.api.update.getStatus().then((status) => {
+      if (status) setUpdate(status)
+    })
+
     return () => window.api.update.removeListeners()
   }, [])
 
@@ -97,7 +125,7 @@ export function Layout({ children }: { children: ReactNode }) {
         display: 'flex',
         flexDirection: 'column',
       }}>
-        {update && <UpdateBanner update={update} />}
+        {update && <UpdateBanner update={update} onDismiss={() => setUpdate(null)} />}
         {children}
       </main>
     </div>

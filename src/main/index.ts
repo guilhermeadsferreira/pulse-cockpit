@@ -440,31 +440,39 @@ function registerIpcHandlers(): void {
   ipcMain.handle('update:install', () => {
     autoUpdater.quitAndInstall()
   })
+
+  ipcMain.handle('update:get-status', () => lastUpdateStatus)
+}
+
+// Persiste o último status para enviar ao renderer quando ele montar após os eventos
+let lastUpdateStatus: { phase: string; version?: string; progress?: number; error?: string } | null = null
+
+function sendUpdateStatus(status: typeof lastUpdateStatus): void {
+  lastUpdateStatus = status
+  mainWindow?.webContents.send('update:status', status)
 }
 
 function setupAutoUpdater(): void {
   if (!app.isPackaged) return  // só roda em produção
 
-  autoUpdater.autoDownload    = true
+  autoUpdater.autoDownload         = true
   autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('update-available', (info) => {
-    mainWindow?.webContents.send('update:status', { phase: 'available', version: info.version })
+    sendUpdateStatus({ phase: 'available', version: info.version })
   })
 
   autoUpdater.on('download-progress', (progress) => {
-    mainWindow?.webContents.send('update:status', {
-      phase: 'downloading',
-      progress: Math.round(progress.percent),
-    })
+    sendUpdateStatus({ phase: 'downloading', progress: Math.round(progress.percent) })
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    mainWindow?.webContents.send('update:status', { phase: 'ready', version: info.version })
+    sendUpdateStatus({ phase: 'ready', version: info.version })
   })
 
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdater]', err.message)
+    sendUpdateStatus({ phase: 'error', error: err.message })
   })
 
   autoUpdater.checkForUpdates()

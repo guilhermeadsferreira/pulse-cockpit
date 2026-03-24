@@ -50,6 +50,7 @@ declare global {
 
       actions: {
         list:         (slug: string) => Promise<Action[]>
+        save:         (action: unknown) => Promise<void>
         updateStatus: (slug: string, id: string, status: ActionStatus) => Promise<void>
       }
 
@@ -59,6 +60,7 @@ declare global {
 
       update: {
         onStatus:        (cb: (data: UpdateStatus) => void) => void
+        getStatus:       () => Promise<UpdateStatus | null>
         install:         () => Promise<void>
         removeListeners: () => void
       }
@@ -66,9 +68,10 @@ declare global {
   }
 
   interface UpdateStatus {
-    phase:    'available' | 'downloading' | 'ready'
+    phase:    'available' | 'downloading' | 'ready' | 'error'
     version?: string
     progress?: number
+    error?: string
   }
 
   interface ClaudeTestResult {

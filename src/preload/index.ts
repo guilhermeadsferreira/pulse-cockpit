@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('api', {
 
   update: {
     onStatus:        (cb: (data: unknown) => void) => ipcRenderer.on('update:status', (_, d) => cb(d)),
+    getStatus:       ()                            => ipcRenderer.invoke('update:get-status'),
     install:         ()                            => ipcRenderer.invoke('update:install'),
     removeListeners: ()                            => ipcRenderer.removeAllListeners('update:status'),
   },
