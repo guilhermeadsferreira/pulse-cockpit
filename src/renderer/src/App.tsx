@@ -7,7 +7,8 @@ import { PersonFormView }   from './views/PersonFormView'
 import { SettingsView }     from './views/SettingsView'
 import { InboxView }        from './views/InboxView'
 import { MeetingsFeedView } from './views/MeetingsFeedView'
-import { EuView }           from './views/EuView'
+import { EuView }             from './views/EuView'
+import { RefinamentosView }   from './views/RefinamentosView'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -66,6 +67,7 @@ function AppContent() {
     'inbox':        <InboxView />,
     'feed':         <MeetingsFeedView />,
     'eu':           <EuView />,
+    'refinamentos': <RefinamentosView />,
   }[view] ?? <DashboardView relacao="liderado" />
 
   return <Layout>{content}</Layout>

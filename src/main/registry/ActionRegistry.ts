@@ -62,6 +62,7 @@ export class ActionRegistry {
         id:               `${date}-${slug}-${i}`,
         personSlug:       slug,
         texto,
+        descricao:        acao.descricao,
         responsavel:      acao.responsavel,
         responsavel_slug: responsavelSlug,
         prazo:            acao.prazo_iso ?? null,

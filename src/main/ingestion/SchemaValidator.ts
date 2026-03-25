@@ -1,4 +1,5 @@
 import type { IngestionAIResult } from '../prompts/ingestion.prompt'
+import type { CerimoniaSinalResult } from '../prompts/cerimonia-sinal.prompt'
 
 const REQUIRED_FIELDS: (keyof IngestionAIResult)[] = [
   'tipo',
@@ -20,6 +21,7 @@ const REQUIRED_FIELDS: (keyof IngestionAIResult)[] = [
   'sinal_evolucao',
   'sentimento_detectado',
   'nivel_engajamento',
+  'confianca',
 ]
 
 // Fields where null is an explicitly valid value (not treated as missing)
@@ -72,6 +74,8 @@ export function validateIngestionResult(data: unknown): ValidationResult {
       const a = obj.acoes_comprometidas[i]
       if (!a || typeof a !== 'object' || !('responsavel' in a) || !('descricao' in a)) {
         typeErrors.push(`acoes_comprometidas[${i}]: faltando responsavel ou descricao`)
+      } else if (!a.descricao || typeof a.descricao !== 'string' || (a.descricao as string).trim() === '') {
+        typeErrors.push(`acoes_comprometidas[${i}]: descricao vazia ou inválida`)
       }
     }
   }
@@ -85,6 +89,75 @@ export function validateIngestionResult(data: unknown): ValidationResult {
 
   if (obj.confianca !== undefined && !['alta', 'media', 'baixa'].includes(obj.confianca as string)) {
     typeErrors.push(`confianca inválido: "${obj.confianca}" — esperado alta|media|baixa`)
+  }
+
+  return {
+    valid: missingFields.length === 0 && typeErrors.length === 0,
+    missingFields,
+    typeErrors,
+  }
+}
+
+const CERIMONIA_SINAL_REQUIRED_FIELDS: (keyof CerimoniaSinalResult)[] = [
+  'sentimento_detectado',
+  'nivel_engajamento',
+  'indicador_saude',
+  'motivo_indicador',
+  'soft_skills_observadas',
+  'hard_skills_observadas',
+  'pontos_de_desenvolvimento',
+  'feedbacks_positivos',
+  'feedbacks_negativos',
+  'temas_detectados',
+  'sinal_evolucao',
+  'necessita_1on1',
+  'confianca',
+]
+
+const CERIMONIA_SINAL_NULLABLE_FIELDS = new Set<keyof CerimoniaSinalResult>([
+  'evidencia_evolucao',
+  'motivo_1on1',
+])
+
+export function validateCerimoniaSinalResult(data: unknown): ValidationResult {
+  const missingFields: string[] = []
+  const typeErrors: string[] = []
+
+  if (!data || typeof data !== 'object') {
+    return { valid: false, missingFields: ['(all — not an object)'], typeErrors: [] }
+  }
+
+  const obj = data as Record<string, unknown>
+
+  for (const field of CERIMONIA_SINAL_REQUIRED_FIELDS) {
+    const value = obj[field]
+    const isMissing = value === undefined || (value === null && !CERIMONIA_SINAL_NULLABLE_FIELDS.has(field))
+    if (isMissing) missingFields.push(field)
+  }
+
+  if (obj.sentimento_detectado && !['positivo', 'neutro', 'ansioso', 'frustrado', 'desengajado'].includes(obj.sentimento_detectado as string)) {
+    typeErrors.push(`sentimento_detectado inválido: "${obj.sentimento_detectado}"`)
+  }
+
+  if (obj.indicador_saude && !['verde', 'amarelo', 'vermelho'].includes(obj.indicador_saude as string)) {
+    typeErrors.push(`indicador_saude inválido: "${obj.indicador_saude}"`)
+  }
+
+  if (obj.confianca && !['alta', 'media', 'baixa'].includes(obj.confianca as string)) {
+    typeErrors.push(`confianca inválido: "${obj.confianca}"`)
+  }
+
+  if (obj.nivel_engajamento !== undefined) {
+    const n = Number(obj.nivel_engajamento)
+    if (!Number.isInteger(n) || n < 1 || n > 5) {
+      typeErrors.push(`nivel_engajamento deve ser inteiro de 1 a 5, recebido: "${obj.nivel_engajamento}"`)
+    }
+  }
+
+  for (const arr of ['soft_skills_observadas', 'hard_skills_observadas', 'pontos_de_desenvolvimento', 'feedbacks_positivos', 'feedbacks_negativos', 'temas_detectados']) {
+    if (obj[arr] !== undefined && !Array.isArray(obj[arr])) {
+      typeErrors.push(`${arr} deve ser array`)
+    }
   }
 
   return {

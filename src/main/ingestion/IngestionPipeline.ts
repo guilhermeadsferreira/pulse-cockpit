@@ -4,7 +4,8 @@ import { readFile } from './FileReader'
 import { ArtifactWriter } from './ArtifactWriter'
 import { runClaudePrompt } from './ClaudeRunner'
 import { buildIngestionPrompt, type IngestionAIResult } from '../prompts/ingestion.prompt'
-import { validateIngestionResult } from './SchemaValidator'
+import { buildCerimoniaSinalPrompt } from '../prompts/cerimonia-sinal.prompt'
+import { validateIngestionResult, validateCerimoniaSinalResult } from './SchemaValidator'
 import { PersonRegistry } from '../registry/PersonRegistry'
 import { ActionRegistry } from '../registry/ActionRegistry'
 import { DetectedRegistry } from '../registry/DetectedRegistry'
@@ -151,30 +152,33 @@ export class IngestionPipeline {
 
   /**
    * Writes artifact for a collective meeting (pessoa_principal = null).
-   * Stores in _coletivo/historico/. No person profile update.
+   * Stores in _coletivo/historico/. Triggers per-person ceremony signal analysis (fire-and-forget).
    */
-  private syncItemToCollective(item: QueueItem): void {
+  private syncItemToCollective(item: QueueItem, claudeBinPath?: string): void {
     if (!item.cachedAiResult || !item.cachedText) return
+
+    // Capture before clearing (fire-and-forget needs them after item fields are cleared)
+    const aiResult = item.cachedAiResult
+    const text = item.cachedText
 
     const collectiveSlug = '_coletivo'
     const historicoDir = join(this.workspacePath, 'pessoas', collectiveSlug, 'historico')
     mkdirSync(historicoDir, { recursive: true })
 
-    const date = item.cachedAiResult.data_artefato
+    const date = aiResult.data_artefato
     const uniqueFileName = `${date}-coletivo-${item.id}.md`
 
     const writer = new ArtifactWriter(this.workspacePath)
-    writer.writeArtifact(collectiveSlug, item.cachedAiResult, item.cachedText, uniqueFileName)
+    writer.writeArtifact(collectiveSlug, aiResult, text, uniqueFileName)
 
-    // T2.4: route collective actions to the responsible registered person's ActionRegistry
-    const acoes = item.cachedAiResult.acoes_comprometidas ?? []
+    // Route collective actions to the responsible registered person's ActionRegistry
+    const acoes = aiResult.acoes_comprometidas ?? []
+    const registry = new PersonRegistry(this.workspacePath)
     if (acoes.length > 0) {
-      const registry = new PersonRegistry(this.workspacePath)
       const actionReg = new ActionRegistry(this.workspacePath)
       const registeredSlugs = new Set(registry.list().map((p) => p.slug))
       for (const acao of acoes) {
         if (!acao.responsavel_slug && acao.responsavel) {
-          // try to infer slug from name
           const candidate = acao.responsavel.toLowerCase().replace(/\s+/g, '-')
           if (registeredSlugs.has(candidate)) {
             acao.responsavel_slug = candidate
@@ -182,13 +186,17 @@ export class IngestionPipeline {
         }
         if (acao.responsavel_slug && registeredSlugs.has(acao.responsavel_slug)) {
           actionReg.createFromArtifact(acao.responsavel_slug, [acao], uniqueFileName, date, registeredSlugs)
+        } else {
+          console.warn(
+            `[IngestionPipeline] ação coletiva sem dono: responsavel="${acao.responsavel}" (slug não resolvido) — fonte: ${uniqueFileName}`
+          )
         }
       }
     }
 
     // Auto-populate Meu Ciclo para reuniões coletivas
     try {
-      new CicloRegistry(this.workspacePath).addFromIngestion(item.cachedAiResult, null)
+      new CicloRegistry(this.workspacePath).addFromIngestion(aiResult, null)
     } catch (err) {
       console.warn('[IngestionPipeline] ciclo auto-populate (coletivo) falhou (não crítico):', err)
     }
@@ -204,6 +212,102 @@ export class IngestionPipeline {
       filePath: item.filePath, personSlug: collectiveSlug,
       tipo: item.tipo, summary: item.summary, novas: [],
     })
+
+    // Per-person ceremony signal extraction (fire-and-forget — does not block collective completion)
+    if (claudeBinPath) {
+      const registeredParticipants = (aiResult.pessoas_identificadas ?? [])
+        .filter((slug) => !!registry.get(slug))
+      if (registeredParticipants.length > 0) {
+        this.runCerimoniaSignalsForPeople(
+          registeredParticipants, aiResult, text, uniqueFileName, claudeBinPath, registry
+        ).catch((err) => console.warn('[IngestionPipeline] sinais cerimônia falhou:', err))
+      }
+    }
+  }
+
+  /**
+   * For each registered participant in a collective ceremony, runs a focused per-person
+   * Claude analysis and applies the resulting signals to their live profile.
+   * Runs in parallel per person, serializes only on per-person profile write.
+   */
+  private async runCerimoniaSignalsForPeople(
+    slugs: string[],
+    aiResult: IngestionAIResult,
+    ceremonyContent: string,
+    ceremonyFileName: string,
+    claudeBinPath: string,
+    registry: PersonRegistry,
+  ): Promise<void> {
+    const teamRegistry = registry.serializeForPrompt()
+    const today = new Date().toISOString().slice(0, 10)
+
+    // Processar em batches de MAX_CONCURRENT para evitar spawnar N processos claude simultaneamente
+    for (let i = 0; i < slugs.length; i += MAX_CONCURRENT) {
+      const batch = slugs.slice(i, i + MAX_CONCURRENT)
+      await Promise.all(
+        batch.map(async (slug) => {
+          try {
+            const pessoa = registry.get(slug)
+            if (!pessoa) return
+
+            const perfilData = registry.getPerfil(slug)
+            const perfilMdRaw = perfilData?.raw ?? null
+
+            const prompt = buildCerimoniaSinalPrompt({
+              teamRegistry,
+              pessoaNome: pessoa.nome,
+              pessoaCargo: pessoa.cargo,
+              pessoaRelacao: pessoa.relacao,
+              perfilMdRaw,
+              ceremonyContent,
+              ceremonyTipo: aiResult.tipo,
+              ceremonyData: aiResult.data_artefato,
+              today,
+            })
+
+            const result = await runClaudePrompt(claudeBinPath, prompt, 60_000)
+            if (!result.success || !result.data) {
+              console.warn(`[IngestionPipeline] sinal cerimônia falhou para "${slug}": ${result.error ?? 'sem dados'}`)
+              return
+            }
+
+            const validation = validateCerimoniaSinalResult(result.data)
+            if (!validation.valid) {
+              const details = [
+                ...validation.missingFields.map((f) => `campo ausente: ${f}`),
+                ...validation.typeErrors,
+              ].join('; ')
+              console.warn(`[IngestionPipeline] schema inválido no sinal cerimônia para "${slug}": ${details}`)
+              return
+            }
+
+            // Serialize write per person to prevent race conditions
+            const release = await this.acquirePersonLock(slug)
+            try {
+              const writer = new ArtifactWriter(this.workspacePath)
+              writer.updatePerfilDeCerimonia(
+                slug,
+                result.data as import('../prompts/cerimonia-sinal.prompt').CerimoniaSinalResult,
+                ceremonyFileName,
+                aiResult.tipo,
+                aiResult.data_artefato,
+              )
+              console.log(`[IngestionPipeline] sinal cerimônia aplicado: "${slug}" ← ${aiResult.tipo} ${aiResult.data_artefato}`)
+            } finally {
+              release()
+            }
+
+            this.notifyRenderer('ingestion:cerimonia-sinal-aplicado', {
+              personSlug: slug,
+              tipo: aiResult.tipo,
+              data: aiResult.data_artefato,
+            })
+          } catch (err) {
+            console.warn(`[IngestionPipeline] sinal cerimônia erro para "${slug}":`, err)
+          }
+        })
+      )
+    }
   }
 
   /**
@@ -308,12 +412,15 @@ export class IngestionPipeline {
 
       const today = new Date().toISOString().slice(0, 10)
 
+      const managerName = settings.managerName ?? undefined
+
       // Pass 1: identify pessoa_principal (no perfil context yet)
       const promptPass1 = buildIngestionPrompt({
         teamRegistry,
         perfilMdRaw: null,
         artifactContent: text,
         today,
+        managerName,
       })
       const resultPass1 = await runClaudePrompt(settings.claudeBinPath, promptPass1, 90_000)
       if (!resultPass1.success || !resultPass1.data) {
@@ -340,6 +447,7 @@ export class IngestionPipeline {
             perfilMdRaw: perfil.raw,
             artifactContent: text,
             today,
+            managerName,
           })
           // Pass 2 carries the full perfil.md in context — allow up to 3× the base timeout
           const resultPass2 = await runClaudePrompt(settings.claudeBinPath, promptPass2, 180_000)
@@ -399,8 +507,8 @@ export class IngestionPipeline {
         await this.syncItemToPerson(item, principal)
         console.log(`[IngestionPipeline] done: ${item.fileName} → ${principal}`)
       } else if (!principal) {
-        // Reunião coletiva: sem pessoa_principal → salva em _coletivo, não bloqueia
-        this.syncItemToCollective(item)
+        // Reunião coletiva: sem pessoa_principal → salva em _coletivo + sinais por pessoa (async)
+        this.syncItemToCollective(item, settings.claudeBinPath)
         console.log(`[IngestionPipeline] done (coletivo): ${item.fileName}`)
       } else {
         // pessoa_principal identificada mas não cadastrada → pending

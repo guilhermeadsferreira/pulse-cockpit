@@ -3,6 +3,7 @@ export interface IngestionPromptParams {
   perfilMdRaw: string | null   // current perfil.md content or null if first ingestion
   artifactContent: string      // file content (possibly truncated)
   today: string                // ISO date YYYY-MM-DD
+  managerName?: string         // nome real do gestor (usuário do sistema)
 }
 
 export interface AcaoComprometida {
@@ -13,7 +14,8 @@ export interface AcaoComprometida {
 }
 
 export function buildIngestionPrompt(params: IngestionPromptParams): string {
-  const { teamRegistry, perfilMdRaw, artifactContent, today } = params
+  const { teamRegistry, perfilMdRaw, artifactContent, today, managerName } = params
+  const gestorLabel = managerName || 'Gestor'
 
   return `Você é o assistente de um gestor de tecnologia analisando artefatos de reuniões e interações com seu time.
 
@@ -55,14 +57,19 @@ Regras obrigatórias:
 - "titulo": título descritivo do evento (máximo 80 caracteres). Reflita o propósito real da reunião (ex: "Pós-Warroom: Incidente WAF/Sequence", "Planning Q2 — Plataforma", "1:1 com Ana Lima"). Nunca use nomes de arquivo, slugs internos ou datas isoladas.
 - "participantes_nomes": array com os nomes completos (corrigidos) de todos que participaram diretamente. Array vazio para artefatos individuais (1:1, feedback).
 - "resumo": 3–5 frases em português claro e preciso. Deve cobrir: contexto/motivo da reunião, o que foi discutido, principais conclusões ou decisões. Para reuniões técnicas, inclua termos e sistemas relevantes. Nunca transcreva trechos garbled.
-- "acoes_comprometidas": array de objetos com campos "responsavel" (nome completo do responsável), "descricao" (o que fazer — autônomo e acionável sem contexto da reunião) e "prazo_iso" (data no formato YYYY-MM-DD se mencionado, null caso contrário). Nunca omita "responsavel" — use "Gestor" se for o próprio usuário do sistema.
+- "acoes_comprometidas": array de objetos com campos "responsavel" (nome completo do responsável), "descricao" (o que fazer — autônomo e acionável sem contexto da reunião) e "prazo_iso" (data no formato YYYY-MM-DD se mencionado, null caso contrário). Nunca omita "responsavel" — use "${gestorLabel}" se for o próprio usuário do sistema. O campo "descricao" DEVE estar em português brasileiro correto: corrija ortografia, gramática e pontuação — nunca copie texto com erros da transcrição. Escreva como uma instrução clara de tarefa (ex: "Investigar causa raiz da lentidão no endpoint de autenticação e propor solução até sexta" — não "investigar causa raiz da lentidão").
 - "sentimento_detectado": estado emocional predominante da pessoa principal observado neste artefato. Um de: "positivo", "neutro", "ansioso", "frustrado", "desengajado". Se não há sinais claros, use "neutro".
 - "nivel_engajamento": nível de participação e energia observado. Inteiro de 1 (muito baixo) a 5 (muito alto). Baseie-se em qualidade das respostas, iniciativas propostas, perguntas feitas, energia percebida.
 - "pontos_de_atencao": cada item deve ser específico — inclua números, métricas, nomes de sistemas e impacto quando disponíveis. Escreva frase completa, não fragmento. Em reuniões coletivas, inclua aqui sinais comportamentais leves que merecem atenção no próximo 1:1 mas não justificam 1:1 urgente (ex: "Participou pouco da planning de Q2 — pode indicar desalinhamento com o escopo definido", "Ficou em silêncio durante discussão de arquitetura onde costuma opinar").
 - "elogios_e_conquistas": cada item deve ser uma frase completa e compreensível, descrevendo quem fez o quê e por que é relevante. Evite frases ambíguas ou dependentes de contexto implícito.
 - "temas_detectados": array de strings com temas recorrentes identificados (ex: "desenvolvimento técnico", "comunicação")
 - "pontos_resolvidos": se o perfil anterior contém pontos de atenção que foram CLARAMENTE resolvidos ou superados neste artefato, copie o texto EXATO desses pontos aqui. Array vazio se nenhum foi resolvido.
-- "resumo_evolutivo": parágrafo narrativo de 4–6 frases integrando o histórico anterior (do perfil) com as novas informações deste artefato. Se não há histórico, escreva a narrativa baseada apenas no artefato.
+- "resumo_evolutivo": parágrafo narrativo de 4–6 frases integrando o histórico anterior (do perfil) com as novas informações deste artefato. Se não há histórico, escreva a narrativa baseada apenas no artefato. ATENÇÃO — o tom do resumo_evolutivo (e dos campos "resumo", "pontos_de_atencao", "elogios_e_conquistas") deve ser calibrado pelo tipo de relação (campo "relacao" no cadastro do time) da pessoa_principal:
+  - relacao "liderado": perspectiva de desenvolvimento. Acompanhe crescimento, engajamento e evolução profissional. Tom: "demonstrou", "está evoluindo", "precisa de atenção em", "avançou no PDI".
+  - relacao "gestor": perspectiva de alinhamento e relacionamento ascendente. O gestor registra como está a relação com seu próprio superior. Tom: "alinhamento sobre X", "suporte recebido em Y", "pontos de divergência em Z", "expectativas comunicadas". Nunca use framing de desenvolvimento como se fosse um liderado — não escreva "está evoluindo" ou "precisa desenvolver".
+  - relacao "par": perspectiva de colaboração horizontal. Tom: "colaboração em X", "dependência identificada em Y", "alinhamento necessário sobre Z", "parceria produtiva em".
+  - relacao "stakeholder": perspectiva de gestão de expectativas. Tom: "expectativa comunicada", "alinhamento sobre entrega", "risco de desalinhamento em", "demanda recebida de".
+  - Se pessoa_principal for null (reunião coletiva): use tom neutro de observação de time, sem focar em desenvolvimento individual.
 - "temas_atualizados": array com os temas recorrentes COMPLETO e deduplicado, mesclando os temas anteriores (do perfil) com os novos detectados neste artefato
 - "indicador_saude": "verde" | "amarelo" | "vermelho" — baseado EXCLUSIVAMENTE no que foi observado NESTE artefato. NUNCA faça média ou ponderação com indicadores anteriores do perfil. Se o histórico mostra verde mas este artefato evidencia problema claro, retorne vermelho. Se o histórico mostra vermelho mas este artefato é positivo e sem sinais de problema, retorne verde. O "Histórico de Saúde" no perfil serve apenas para você entender a tendência — não influencie o valor atual por ele.
 - "motivo_indicador": 1 frase explicando o indicador de saúde baseado neste artefato específico
@@ -131,5 +138,5 @@ export interface IngestionAIResult {
   motivo_estagnacao: string | null
   sinal_evolucao: boolean
   evidencia_evolucao: string | null
-  confianca?: 'alta' | 'media' | 'baixa'  // optional — defaults to 'media' if absent
+  confianca: 'alta' | 'media' | 'baixa'
 }

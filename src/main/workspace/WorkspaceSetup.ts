@@ -13,6 +13,7 @@ export async function setupWorkspace(workspacePath: string): Promise<void> {
     join(workspacePath, 'exports'),
     join(workspacePath, 'gestor'),
     join(workspacePath, 'gestor', 'ciclo'),
+    join(workspacePath, 'refinamentos'),
     ...ARTIFACT_TYPES.map((t) => join(workspacePath, 'artefatos', t)),
   ]
 

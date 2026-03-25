@@ -1,4 +1,4 @@
-import type { AppSettings, PersonConfig, ArtifactMeta, ArtifactFeedItem, PerfilData, QueueItem, CycleReportParams, DetectedPerson, PautaMeta, Action, ActionStatus } from './ipc'
+import type { AppSettings, PersonConfig, ArtifactMeta, ArtifactFeedItem, PerfilData, QueueItem, CycleReportParams, DetectedPerson, PautaMeta, Action, ActionStatus, DocItem } from './ipc'
 
 declare global {
   interface Window {
@@ -63,6 +63,13 @@ declare global {
         getStatus:       () => Promise<UpdateStatus | null>
         install:         () => Promise<void>
         removeListeners: () => void
+      }
+
+      refinamentos: {
+        list:   () => Promise<DocItem[]>
+        save:   (srcPath: string) => Promise<string>
+        read:   (filePath: string) => Promise<string>
+        delete: (filePath: string) => Promise<void>
       }
     }
   }

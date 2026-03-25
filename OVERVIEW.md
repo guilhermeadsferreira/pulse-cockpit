@@ -3,7 +3,7 @@
 > Documento de referência para revisões de produto e técnica com apoio de IA.
 > Cobre: ideia, problema, objetivos, módulos, regras de negócio, retroalimentações e roadmap.
 >
-> **Última atualização:** 2026-03-21
+> **Última atualização:** 2026-03-24
 
 ---
 
@@ -119,6 +119,11 @@ FileWatcher monitora inbox/ com chokidar
             → ArtifactWriter.updatePerfil() → atualiza perfil.md
             → ActionRegistry.createFromArtifact() → actions.yaml
         → Se sem pessoa_principal → syncItemToCollective() → _coletivo/
+            → Ações roteadas ao ActionRegistry de cada responsável registrado
+            → [fire-and-forget] Para cada participante cadastrado:
+                Pass Cerimônia (novo, 60s): buildCerimoniaSinalPrompt() focado nessa pessoa
+                  → SchemaValidator valida CerimoniaSinalResult
+                  → ArtifactWriter.updatePerfilDeCerimonia() → atualiza perfil sem criar entrada no histórico
         → Se pessoa detectada mas não cadastrada → status = 'pending'
           → fica esperando o gestor cadastrar a pessoa
           → ao cadastrar, syncPending() processa sem nova chamada ao Claude
@@ -127,7 +132,7 @@ FileWatcher monitora inbox/ com chokidar
 **Por que dois passes (two-pass)?**
 O Pass 1 identifica a pessoa principal sem contexto de histórico. O Pass 2 envia o perfil vivo acumulado junto com o artefato — permitindo que o Claude gere um `resumo_evolutivo` que integra o que aconteceu hoje com o que já se sabe da pessoa. Sem o Pass 2, o resumo evolutivo seria sempre baseado só no artefato atual.
 
-**O que a IA extrai de cada artefato:**
+**O que a IA extrai de cada artefato (Pass 1 / Pass 2):**
 
 | Campo | Descrição |
 |-------|-----------|
@@ -142,7 +147,7 @@ O Pass 1 identifica a pessoa principal sem contexto de histórico. O Pass 2 envi
 | `pontos_resolvidos` | Pontos de atenção anteriores superados |
 | `elogios_e_conquistas` | Reconhecimentos detectados |
 | `temas_detectados` | Temas recorrentes identificados |
-| `resumo_evolutivo` | Narrativa integrando histórico + novo artefato |
+| `resumo_evolutivo` | Narrativa integrando histórico + novo artefato (tom calibrado por `relacao`) |
 | `temas_atualizados` | Lista completa dedupada de temas (histórico + novos) |
 | `indicador_saude` | `verde / amarelo / vermelho` |
 | `motivo_indicador` | 1 frase explicando o indicador |
@@ -154,9 +159,27 @@ O Pass 1 identifica a pessoa principal sem contexto de histórico. O Pass 2 envi
 | `motivo_estagnacao` | Padrão que gerou o alerta |
 | `sinal_evolucao` | Boolean — evidência clara de crescimento |
 | `evidencia_evolucao` | Descrição da evidência de crescimento |
+| `confianca` | `alta / media / baixa` — nível de confiança nas inferências |
+
+**O que o Pass de Cerimônia extrai por pessoa (reuniões coletivas):**
+
+| Campo | Descrição |
+|-------|-----------|
+| `soft_skills_observadas` | Padrões comportamentais observáveis (comunicação, colaboração, autonomia) |
+| `hard_skills_observadas` | Evidências técnicas concretas (liderou decisão, identificou bug, estimou corretamente) |
+| `pontos_de_desenvolvimento` | Áreas que precisam crescer, observadas nesta cerimônia |
+| `feedbacks_positivos` | Reconhecimentos positivos concretos |
+| `feedbacks_negativos` | Observações negativas que merecem atenção |
+| `temas_detectados` | Temas para merge nos Temas Recorrentes do perfil |
+| `sentimento_detectado` | Estado emocional observado na cerimônia |
+| `nivel_engajamento` | Participação 1–5 nesta cerimônia |
+| `indicador_saude` | Sinal de saúde baseado apenas nesta cerimônia |
+| `sinal_evolucao` | Evidência de crescimento observada |
+| `necessita_1on1` | Urgência (apenas para sinais graves e inequívocos) |
+| `confianca` | `alta / media / baixa` — proporcional à participação na cerimônia |
 
 **Reunião coletiva:**
-Quando um artefato não tem uma pessoa principal clara (ex: pós-warroom com 6 pessoas de times diferentes), é armazenado em `_coletivo/historico/`. As ações comprometidas são roteadas automaticamente para o `ActionRegistry` de cada responsável registrado.
+Quando um artefato não tem uma pessoa principal clara (ex: pós-warroom com 6 pessoas de times diferentes), é armazenado em `_coletivo/historico/`. As ações comprometidas são roteadas automaticamente para o `ActionRegistry` de cada responsável registrado. Em seguida, para cada participante cadastrado, roda um **Pass de Cerimônia** individual (prompt `cerimonia-sinal.prompt.ts`) que extrai sinais específicos dessa pessoa na reunião — soft skills observadas, hard skills, pontos de desenvolvimento, feedbacks positivos e negativos — e atualiza o perfil vivo da pessoa sem criar uma nova entrada no Histórico de Artefatos.
 
 **Item pendente:**
 Se a pessoa principal foi identificada pela IA mas não está cadastrada, o item fica em `pending`. O resultado da IA é **cacheado em memória** — ao cadastrar a pessoa, `syncPending()` processa sem invocar o Claude novamente.
@@ -175,24 +198,34 @@ O Perfil Vivo (`perfil.md`) é o arquivo que diferencia o Pulse Cockpit de qualq
 ---
 
 ## Resumo Evolutivo
-Narrativa que é *reescrita* a cada ingestão com o novo contexto integrado.
+Narrativa que é *reescrita* a cada ingestão direta (1:1, feedback, reunião com pessoa_principal).
+Tom calibrado pela relação: desenvolvimento (liderado), alinhamento (gestor), colaboração (par).
+NÃO é reescrita por sinais de cerimônia coletiva.
 
 ## Ações Pendentes
 Lista de ações comprometidas. Novos itens são *appendados*. Gestor marca como concluído.
 
 ## Pontos de Atenção Ativos
-Riscos e preocupações. Novos itens appendados. Quando a IA detecta que foram superados,
-aparecem com strikethrough automático.
+Riscos e preocupações. Novos itens appendados — tanto de ingestões diretas quanto de sinais
+de cerimônia (com prefixo do tipo, ex: `**2026-03-21 (daily):**`).
+Quando a IA detecta que foram superados, aparecem com strikethrough automático.
 
 ## Conquistas e Elogios
-Reconhecimentos acumulados ao longo do tempo.
+Reconhecimentos e hard skills positivas acumulados. Recebe tanto itens de ingestões diretas
+quanto de sinais de cerimônia coletiva.
 
 ## Temas Recorrentes
 Lista dedupada dos temas que aparecem repetidamente nos artefatos. *Substituída integralmente*
-a cada ingestão com a lista atualizada.
+a cada ingestão com a lista atualizada. Soft skills observadas em cerimônias também são
+mergeadas aqui.
 
 ## Histórico de Artefatos
-Links para cada artefato processado. *Nunca reescrito* — apenas append.
+Links para cada artefato processado de ingestão direta. *Nunca reescrito* — apenas append.
+Sinais de cerimônia coletiva NÃO criam entradas aqui (o artefato coletivo existe em _coletivo/).
+
+## Histórico de Saúde
+Série histórica de indicadores: `YYYY-MM-DD | verde | motivo`. Ingestões diretas e sinais de
+cerimônia appendam entradas (as de cerimônia têm o tipo entre parênteses: `(daily)`, `(retro)`).
 ```
 
 **Frontmatter — indicadores persistidos:**
@@ -240,6 +273,10 @@ Toda ação comprometida num artefato vira uma entrada estruturada em `actions.y
 ```
 
 **Campo `owner`:** diferencia se a ação é responsabilidade do liderado, do próprio gestor ou de terceiros. Importante para saber o que cobrar de quem.
+
+**Campo `descricao`:** armazena a descrição limpa da tarefa, separada do campo `texto` (que mantém o formato legado `"Responsável: descrição"`). A UI exibe `descricao` como título principal e `responsavel` como metadata — evitando o prefixo "Gestor:" no título.
+
+**Nome do gestor nas ações:** quando configurado em settings (`managerName`), o prompt usa o nome real do gestor no campo `responsavel` das ações que ele comprometeu. Se não configurado, usa "Gestor" como fallback.
 
 **Ações vencidas:** calculadas em runtime — `status === 'open' && prazo < hoje`. Não persistidas no disco, apenas computadas na leitura.
 
@@ -344,7 +381,7 @@ Regra central da ingestão. Toda decisão de roteamento do artefato depende dest
 
 - Se a ação foi comprometida por alguém registrado → vai para o `actions.yaml` dessa pessoa
 - Se a ação foi comprometida em reunião coletiva → o sistema tenta inferir o `responsavel_slug` pelo nome; se encontrar correspondência no time, cria a entrada no `ActionRegistry` da pessoa correta
-- Se o responsável é o próprio gestor (usuário do app) → campo `responsavel: "Gestor"`, `owner: "gestor"`
+- Se o responsável é o próprio gestor (usuário do app) → campo `responsavel: "{managerName}"` (ou "Gestor" se não configurado), `owner: "gestor"`
 
 ### 6.3 Resolução de pontos de atenção
 
@@ -379,6 +416,21 @@ Isso evita 90s extras de processamento para dailies de 80 chars ou primeiras ing
 ### 6.8 Dados stale
 
 Um perfil é considerado `dados_stale` se `ultima_ingestao` foi há mais de 30 dias. Isso é injetado em runtime no IPC handler — não persistido no disco. Quando `dados_stale === true`, os alertas gerados pela IA no perfil são suprimidos na pauta com o gestor, porque os dados podem não refletir mais a realidade atual.
+
+### 6.10 Framing por relação
+
+O `resumo_evolutivo` e os campos narrativos (`resumo`, `pontos_de_atencao`, `elogios_e_conquistas`) têm tom calibrado pelo tipo de relação da `pessoa_principal`:
+
+| `relacao` | Perspectiva | Tom |
+|-----------|-------------|-----|
+| `liderado` | Desenvolvimento e evolução profissional | "demonstrou", "está evoluindo", "precisa de atenção em" |
+| `gestor` | Alinhamento e relacionamento ascendente | "alinhamento sobre X", "suporte recebido em Y", "pontos de divergência em Z" |
+| `par` | Colaboração horizontal | "colaboração em X", "dependência identificada em Y", "alinhamento necessário sobre Z" |
+| `stakeholder` | Gestão de expectativas | "expectativa comunicada", "alinhamento sobre entrega", "risco de desalinhamento em" |
+
+O campo `relacao` já está disponível no `serializeForPrompt()` — o prompt usa essa informação para ajustar o tom sem mudar o schema de saída.
+
+---
 
 ### 6.9 Schema migration
 
@@ -515,7 +567,7 @@ Main Process (Node.js)
 ├── ingestion/ — FileWatcher, Pipeline, ClaudeRunner, ArtifactWriter, SchemaValidator
 ├── registry/ — PersonRegistry, ActionRegistry, DetectedRegistry, SettingsManager
 ├── migration/ — ProfileMigration (schema versioning)
-├── prompts/ — ingestion, agenda, agenda-gestor, cycle
+├── prompts/ — ingestion, cerimonia-sinal, agenda, agenda-gestor, cycle, compression, autoavaliacao
 └── workspace/ — WorkspaceSetup (cria estrutura de pastas)
 
 Renderer Process (React)
@@ -537,6 +589,7 @@ IPC Bridge (preload/index.ts)
 | `ai:generate-agenda` | renderer → main | Gera pauta (chama Claude) |
 | `ai:cycle-report` | renderer → main | Gera relatório de ciclo (chama Claude) |
 | `ingestion:started/completed/failed` | main → renderer | Push de status em tempo real |
+| `ingestion:cerimonia-sinal-aplicado` | main → renderer | Sinal de cerimônia aplicado ao perfil de participante |
 
 ---
 
@@ -601,7 +654,8 @@ evidencia_evolucao: "Liderou refatoração sozinha e recebeu elogio do time"
 actions:
   - id: "2026-03-15-maria-silva-0"
     personSlug: "maria-silva"
-    texto: "Apresentar proposta de observabilidade até 2026-03-22"
+    texto: "Maria Silva: Apresentar proposta de observabilidade até 2026-03-22"  # legado — mantido para dedup
+    descricao: "Apresentar proposta de observabilidade"                           # campo novo — exibido na UI como título
     responsavel: "Maria Silva"
     responsavel_slug: "maria-silva"
     prazo: "2026-03-22"
@@ -612,6 +666,8 @@ actions:
     concluidoEm: null
     fonteArtefato: "2026-03-15-maria-silva.md"
 ```
+
+**Backward compat:** ações antigas sem o campo `descricao` continuam exibindo `texto` na UI.
 
 ---
 
@@ -636,6 +692,10 @@ actions:
 | Templates de artefato por tipo | ✅ |
 | Processamento paralelo (max 3, per-person lock) | ✅ |
 | Schema migration automática | ✅ |
+| Pass de Cerimônia por pessoa (sinais individuais em reuniões coletivas) | ✅ |
+| Framing narrativo por tipo de relação (liderado / gestor / par / stakeholder) | ✅ |
+| Campo `descricao` separado em ações (UI mostra título limpo + responsável como metadata) | ✅ |
+| Nome real do gestor nas ações via `managerName` nas settings | ✅ |
 
 ### V2 — Cockpit completo de gestão (planejado)
 

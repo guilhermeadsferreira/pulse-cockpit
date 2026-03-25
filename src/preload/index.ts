@@ -60,6 +60,13 @@ contextBridge.exposeInMainWorld('api', {
     open: (filePath: string) => ipcRenderer.invoke('shell:open', filePath),
   },
 
+  refinamentos: {
+    list:   ()                             => ipcRenderer.invoke('refinamentos:list'),
+    save:   (srcPath: string)              => ipcRenderer.invoke('refinamentos:save', srcPath),
+    read:   (filePath: string)             => ipcRenderer.invoke('refinamentos:read', filePath),
+    delete: (filePath: string)             => ipcRenderer.invoke('refinamentos:delete', filePath),
+  },
+
   update: {
     onStatus:        (cb: (data: unknown) => void) => ipcRenderer.on('update:status', (_, d) => cb(d)),
     getStatus:       ()                            => ipcRenderer.invoke('update:get-status'),

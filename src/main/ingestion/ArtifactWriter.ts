@@ -1,17 +1,18 @@
 import { existsSync, readFileSync, writeFileSync, renameSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import type { IngestionAIResult } from '../prompts/ingestion.prompt'
+import type { CerimoniaSinalResult } from '../prompts/cerimonia-sinal.prompt'
 import { ActionRegistry } from '../registry/ActionRegistry'
 import { CURRENT_SCHEMA_VERSION } from '../migration/ProfileMigration'
 
 const SECTION = {
-  resumo:          { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  acoes:           { open: '<!-- BLOCO GERENCIADO PELA IA — append de novos itens -->',                        close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  atencao:         { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  conquistas:      { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  temas:           { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  historico:       { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas, nunca reescrito -->',               close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  saude_historico: { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (histórico de saúde) -->',           close: '<!-- FIM DO BLOCO GERENCIADO -->' },
+  resumo:          { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
+  acoes:           { open: '<!-- BLOCO GERENCIADO PELA IA — append de novos itens -->',                        close: '<!-- FIM BLOCO ACOES -->' },
+  atencao:         { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM BLOCO ATENCAO -->' },
+  conquistas:      { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM BLOCO CONQUISTAS -->' },
+  temas:           { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM BLOCO TEMAS -->' },
+  historico:       { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas, nunca reescrito -->',               close: '<!-- FIM BLOCO HISTORICO -->' },
+  saude_historico: { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (histórico de saúde) -->',           close: '<!-- FIM BLOCO SAUDE -->' },
 }
 
 /**
@@ -40,7 +41,7 @@ export class ArtifactWriter {
     const titulo = result.titulo ?? `${tipoLabel(tipo)} — ${slug} · ${date}`
     const participantes = result.participantes_nomes ?? []
 
-    const confianca = result.confianca ?? 'media'
+    const confianca = result.confianca
     const lines: string[] = [
       `---`,
       `tipo: ${tipo}`,
@@ -305,7 +306,7 @@ ${SECTION.saude_historico.close}
 
     // saude + ultima_confianca
     fm = fm.replace(/saude:.*/, `saude: "${result.indicador_saude}"`)
-    const confianca = result.confianca ?? 'media'
+    const confianca = result.confianca
     if (/ultima_confianca:/.test(fm)) {
       fm = fm.replace(/ultima_confianca:.*/, `ultima_confianca: "${confianca}"`)
     } else {
@@ -401,6 +402,134 @@ ${SECTION.saude_historico.close}
       })
       return `${blockOpen}${marked.join('\n')}${blockClose}`
     })
+  }
+
+  /**
+   * Applies per-person ceremony signals to an existing perfil.md.
+   * Unlike updatePerfil(), this method:
+   *   - Does NOT rewrite Resumo Evolutivo (no full narrative context for group ceremonies)
+   *   - Does NOT add to Histórico de Artefatos (collective artifact already captured in _coletivo)
+   *   - Does NOT increment total_artefatos or update ultima_ingestao
+   *   - DOES update frontmatter health/signal fields
+   *   - DOES append to Pontos de Atenção, Conquistas, Temas
+   *   - DOES append to Histórico de Saúde
+   * Atomic write: .tmp → rename.
+   */
+  updatePerfilDeCerimonia(
+    slug: string,
+    sinal: CerimoniaSinalResult,
+    ceremonyFileName: string,
+    ceremonyTipo: string,
+    ceremonyData: string,
+  ): void {
+    const perfilPath = join(this.pessoasDir, slug, 'perfil.md')
+    if (!existsSync(perfilPath)) return  // no profile yet — skip (first ingestion hasn't happened)
+
+    const tmpPath = perfilPath + '.tmp'
+    const bakPath = perfilPath + '.bak'
+    copyFileSync(perfilPath, bakPath)
+
+    const existing = readFileSync(perfilPath, 'utf-8')
+    const now = new Date().toISOString()
+    const today = now.slice(0, 10)
+    const tipoLabel = ceremonyTipo  // e.g. 'daily', 'planning', 'retro'
+
+    let updated = this.updateFrontmatterFromCerimonia(existing, sinal, now)
+
+    // Pontos de desenvolvimento + feedbacks negativos → Pontos de Atenção Ativos
+    const atencaoItems = [...sinal.pontos_de_desenvolvimento, ...sinal.feedbacks_negativos]
+    if (atencaoItems.length > 0) {
+      const newLines = atencaoItems
+        .map((p) => `- **${today} (${tipoLabel}):** ${p}`)
+        .join('\n')
+      updated = this.appendToBlock(updated, 'atencao', newLines)
+    }
+
+    // Hard skills positivas + feedbacks positivos → Conquistas e Elogios
+    const conquistaItems = [...sinal.hard_skills_observadas, ...sinal.feedbacks_positivos]
+    if (conquistaItems.length > 0) {
+      const newLines = conquistaItems
+        .map((e) => `- **${today} (${tipoLabel}):** ${e}`)
+        .join('\n')
+      updated = this.appendToBlock(updated, 'conquistas', newLines)
+    }
+
+    // Soft skills + temas → merge into Temas Recorrentes (deduplication)
+    const newTemas = [...sinal.soft_skills_observadas, ...sinal.temas_detectados]
+    if (newTemas.length > 0) {
+      const currentTemasBody = this.extractBlock(updated, 'temas')
+      const currentTemas = currentTemasBody
+        .split('\n')
+        .map((l) => l.replace(/^-\s*/, '').trim())
+        .filter(Boolean)
+      const merged = [...new Set([...currentTemas, ...newTemas])]
+      const temasLines = merged.map((t) => `- ${t}`).join('\n')
+      updated = this.replaceBlock(updated, 'temas', temasLines)
+    }
+
+    // Histórico de Saúde — append ceremony signal (nota de baixa confiança quando aplicável)
+    const confiancaLabel = sinal.confianca === 'baixa' ? ' (baixa confiança)' : ''
+    const saudeLine = `- ${ceremonyData} | ${sinal.indicador_saude}${confiancaLabel} | (${tipoLabel}) ${sinal.motivo_indicador}`
+    if (updated.includes(SECTION.saude_historico.open)) {
+      updated = this.appendToBlock(updated, 'saude_historico', saudeLine)
+    } else {
+      updated = updated.trimEnd() + `\n\n## Histórico de Saúde\n${SECTION.saude_historico.open}\n${saudeLine}\n${SECTION.saude_historico.close}\n`
+    }
+
+    writeFileSync(tmpPath, updated, 'utf-8')
+    renameSync(tmpPath, perfilPath)
+  }
+
+  private updateFrontmatterFromCerimonia(content: string, sinal: CerimoniaSinalResult, now: string): string {
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/)
+    if (!fmMatch) return content
+
+    let fm = fmMatch[1]
+
+    // ultima_atualizacao — always update
+    fm = fm.replace(/ultima_atualizacao:.*/, `ultima_atualizacao: "${now}"`)
+
+    // saude + ultima_confianca
+    // Sinal de baixa confiança nunca piora o indicador atual — apenas melhora ou mantém.
+    const saudeOrder: Record<string, number> = { verde: 0, amarelo: 1, vermelho: 2 }
+    const currentSaude = /saude:\s*"(\w+)"/.exec(fm)?.[1] ?? 'verde'
+    const shouldUpdateSaude = sinal.confianca !== 'baixa' ||
+      (saudeOrder[sinal.indicador_saude] ?? 0) < (saudeOrder[currentSaude] ?? 0)
+    if (shouldUpdateSaude) {
+      if (/ultima_confianca:/.test(fm)) {
+        fm = fm.replace(/saude:.*/, `saude: "${sinal.indicador_saude}"`)
+        fm = fm.replace(/ultima_confianca:.*/, `ultima_confianca: "${sinal.confianca}"`)
+      } else {
+        fm = fm.replace(/saude:.*/, `saude: "${sinal.indicador_saude}"\nultima_confianca: "${sinal.confianca}"`)
+      }
+    }
+
+    // necessita_1on1 — only set to true, never clear an existing true
+    const currentNecessita = /necessita_1on1:\s*true/.test(fm)
+    if (!currentNecessita && sinal.necessita_1on1) {
+      const motivo = sinal.motivo_1on1 ? `"${sinal.motivo_1on1}"` : 'null'
+      if (/necessita_1on1:/.test(fm)) {
+        fm = fm.replace(/necessita_1on1:.*/, `necessita_1on1: true`)
+        fm = fm.replace(/motivo_1on1:.*/, `motivo_1on1: ${motivo}`)
+      } else {
+        fm += `\nnecessita_1on1: true\nmotivo_1on1: ${motivo}`
+      }
+    }
+
+    // sinal_evolucao — only set to true, never clear an existing true.
+    // Sinal de baixa confiança nunca constitui evidência suficiente de evolução.
+    const currentEvolucao = /sinal_evolucao:\s*true/.test(fm)
+    if (sinal.confianca !== 'baixa' && !currentEvolucao && sinal.sinal_evolucao) {
+      const evidencia = sinal.evidencia_evolucao ? `"${sinal.evidencia_evolucao}"` : 'null'
+      if (/sinal_evolucao:/.test(fm)) {
+        fm = fm.replace(/sinal_evolucao:.*/, `sinal_evolucao: true`)
+        fm = fm.replace(/evidencia_evolucao:.*/, `evidencia_evolucao: ${evidencia}`)
+      } else {
+        fm += `\nsinal_evolucao: true\nevidencia_evolucao: ${evidencia}`
+      }
+    }
+
+    return content.replace(/^---\n[\s\S]*?\n---/, `---\n${fm}\n---`)
   }
 
   private extractBlock(content: string, blockKey: keyof typeof SECTION): string {

@@ -86,7 +86,8 @@ export type ActionPriority = 'baixa' | 'media' | 'alta'
 export interface Action {
   id:               string
   personSlug:       string
-  texto:            string
+  texto:            string           // texto completo legado: "Responsavel: descricao [até prazo]"
+  descricao?:       string           // descrição limpa da tarefa (sem prefixo do responsável)
   status:           ActionStatus
   criadoEm:         string
   // Structured fields (populated from T1.3 schema)
@@ -241,4 +242,28 @@ export interface CicloIngestResult {
   success:  boolean
   entry?:   CicloEntry
   error?:   string
+}
+
+export interface DocItem {
+  fileName: string
+  filePath: string
+  date:     string   // YYYY-MM-DD
+}
+
+export interface CerimoniaSinalResult {
+  sentimento_detectado: 'positivo' | 'neutro' | 'ansioso' | 'frustrado' | 'desengajado'
+  nivel_engajamento: 1 | 2 | 3 | 4 | 5
+  indicador_saude: 'verde' | 'amarelo' | 'vermelho'
+  motivo_indicador: string
+  soft_skills_observadas: string[]
+  hard_skills_observadas: string[]
+  pontos_de_desenvolvimento: string[]
+  feedbacks_positivos: string[]
+  feedbacks_negativos: string[]
+  temas_detectados: string[]
+  sinal_evolucao: boolean
+  evidencia_evolucao: string | null
+  necessita_1on1: boolean
+  motivo_1on1: string | null
+  confianca: 'alta' | 'media' | 'baixa'
 }

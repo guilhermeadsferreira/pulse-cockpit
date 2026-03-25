@@ -872,9 +872,14 @@ function ActionRow({
           textDecoration: isDone || isCancelled ? 'line-through' : 'none',
           lineHeight: 1.5,
         }}>
-          {a.texto}
+          {a.descricao ?? a.texto}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
+          {a.responsavel && (
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              {a.responsavel}
+            </span>
+          )}
           {a.prazo && !isDone && !isCancelled && (
             <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
               prazo {fmtDate(a.prazo)}

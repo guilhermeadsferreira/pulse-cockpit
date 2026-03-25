@@ -4,10 +4,10 @@ import { runClaudePrompt } from './ClaudeRunner'
 import { buildCompressionPrompt, type CompressionAIResult } from '../prompts/compression.prompt'
 
 const SECTION_PATTERNS = {
-  resumo:     { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  atencao:    { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  conquistas: { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM DO BLOCO GERENCIADO -->' },
-  temas:      { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM DO BLOCO GERENCIADO -->' },
+  resumo:     { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
+  atencao:    { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM BLOCO ATENCAO -->' },
+  conquistas: { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM BLOCO CONQUISTAS -->' },
+  temas:      { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM BLOCO TEMAS -->' },
 }
 
 export class ProfileCompressor {

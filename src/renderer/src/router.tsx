@@ -10,6 +10,7 @@ export type ViewName =
   | 'inbox'
   | 'settings'
   | 'eu'
+  | 'refinamentos'
 
 interface RouterEntry {
   view: ViewName

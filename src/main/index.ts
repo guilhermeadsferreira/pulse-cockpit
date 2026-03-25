@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
-import { writeFileSync, readFileSync, mkdirSync } from 'fs'
+import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, copyFileSync, existsSync } from 'fs'
 import { SettingsManager } from './registry/SettingsManager'
 import { PersonRegistry } from './registry/PersonRegistry'
 import { DetectedRegistry } from './registry/DetectedRegistry'
@@ -442,6 +442,43 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('update:get-status', () => lastUpdateStatus)
+
+  // ── Refinamentos ──────────────────────────────────────────
+  ipcMain.handle('refinamentos:list', () => {
+    const { workspacePath } = SettingsManager.load()
+    const dir = join(workspacePath, 'refinamentos')
+    if (!existsSync(dir)) return []
+    return readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .sort((a, b) => b.localeCompare(a))
+      .map((fileName) => {
+        const match = fileName.match(/^(\d{4}-\d{2}-\d{2})-/)
+        return {
+          fileName,
+          filePath: join(dir, fileName),
+          date: match ? match[1] : '',
+        }
+      })
+  })
+
+  ipcMain.handle('refinamentos:save', (_event, srcPath: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const dir = join(workspacePath, 'refinamentos')
+    mkdirSync(dir, { recursive: true })
+    const today = new Date().toISOString().slice(0, 10)
+    const baseName = srcPath.split('/').pop() ?? 'doc.md'
+    const destName = baseName.startsWith(/^\d{4}-/.source) ? baseName : `${today}-${baseName}`
+    copyFileSync(srcPath, join(dir, destName))
+    return destName
+  })
+
+  ipcMain.handle('refinamentos:read', (_event, filePath: string) => {
+    return readFileSync(filePath, 'utf-8')
+  })
+
+  ipcMain.handle('refinamentos:delete', (_event, filePath: string) => {
+    if (existsSync(filePath)) unlinkSync(filePath)
+  })
 }
 
 // Persiste o último status para enviar ao renderer quando ele montar após os eventos
