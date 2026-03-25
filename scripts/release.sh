@@ -66,7 +66,7 @@ echo "Criando release v$NEW no GitHub..."
 ASSETS=()
 while IFS= read -r f; do
   ASSETS+=("$f")
-done < <(find dist -maxdepth 1 \( -name "*-${NEW}*.dmg" -o -name "*-${NEW}*.blockmap" -o -name "latest-mac.yml" \))
+done < <(find dist -maxdepth 1 \( -name "*-${NEW}*.dmg" -o -name "*-${NEW}*-mac.zip" -o -name "*-${NEW}*.blockmap" -o -name "latest-mac.yml" \))
 
 gh release create "v$NEW" \
   --title "v$NEW" \
