@@ -91,7 +91,7 @@ function UpdateBanner({ update, onDismiss }: { update: UpdateStatus; onDismiss: 
         fontSize: 12, color: 'var(--text-secondary)',
       }}>
         <AlertTriangle size={13} style={{ color: 'var(--red)', flexShrink: 0 }} />
-        <span>Falha ao baixar atualização. O app continuará funcionando normalmente.</span>
+        <span>Falha ao baixar atualização. O app continuará funcionando normalmente.{update.error ? ` (${update.error})` : ''}</span>
         {dismissBtn}
       </div>
     )
