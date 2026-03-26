@@ -9,6 +9,7 @@ import { validateIngestionResult, validateCerimoniaSinalResult } from './SchemaV
 import { PersonRegistry } from '../registry/PersonRegistry'
 import { ActionRegistry } from '../registry/ActionRegistry'
 import { DetectedRegistry } from '../registry/DetectedRegistry'
+import { DemandaRegistry } from '../registry/DemandaRegistry'
 import { CicloRegistry } from '../registry/CicloRegistry'
 import { SettingsManager } from '../registry/SettingsManager'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
@@ -172,12 +173,31 @@ export class IngestionPipeline {
     writer.writeArtifact(collectiveSlug, aiResult, text, uniqueFileName)
 
     // Route collective actions to the responsible registered person's ActionRegistry
+    // or to DemandaRegistry (módulo Eu) when the responsible is the manager
     const acoes = aiResult.acoes_comprometidas ?? []
     const registry = new PersonRegistry(this.workspacePath)
+    const settings = SettingsManager.load()
+    const managerName = settings.managerName?.trim().toLowerCase() ?? ''
     if (acoes.length > 0) {
       const actionReg = new ActionRegistry(this.workspacePath)
+      const demandaReg = new DemandaRegistry(this.workspacePath)
       const registeredSlugs = new Set(registry.list().map((p) => p.slug))
       for (const acao of acoes) {
+        // Check if this action belongs to the manager → route to Demandas (módulo Eu)
+        if (managerName && acao.responsavel?.trim().toLowerCase() === managerName) {
+          demandaReg.save({
+            id:          `${date}-gestor-${Math.random().toString(36).slice(2, 7)}`,
+            descricao:   acao.descricao,
+            origem:      'Eu',
+            prazo:       acao.prazo_iso ?? null,
+            criadoEm:    date,
+            atualizadoEm: date,
+            status:      'open',
+          })
+          console.log(`[IngestionPipeline] ação do gestor → Demandas: "${acao.descricao.slice(0, 60)}"`)
+          continue
+        }
+
         if (!acao.responsavel_slug && acao.responsavel) {
           const candidate = acao.responsavel.toLowerCase().replace(/\s+/g, '-')
           if (registeredSlugs.has(candidate)) {
@@ -390,6 +410,65 @@ export class IngestionPipeline {
     return current.then(() => release)
   }
 
+  /**
+   * Remaps AI-generated slugs to registered people when the exact slug doesn't match
+   * but the first name is unambiguous (only one registered person shares that first name).
+   * Mutates aiResult in place: pessoas_identificadas, pessoa_principal, novas_pessoas_detectadas.
+   */
+  private fuzzyRemapSlugs(
+    aiResult: IngestionAIResult,
+    registeredPeople: Array<{ slug: string; nome: string }>,
+  ): void {
+    const registeredSlugs = new Set(registeredPeople.map((p) => p.slug))
+
+    // Build first-name → slug index (only keep unambiguous entries)
+    const firstNameIndex = new Map<string, string | null>()
+    for (const p of registeredPeople) {
+      const firstName = p.slug.split('-')[0]
+      if (firstNameIndex.has(firstName)) {
+        firstNameIndex.set(firstName, null) // ambiguous — more than one person
+      } else {
+        firstNameIndex.set(firstName, p.slug)
+      }
+    }
+
+    function resolve(slug: string): string | null {
+      if (registeredSlugs.has(slug)) return null // already registered, no remap needed
+      const firstName = slug.split('-')[0]
+      const match = firstNameIndex.get(firstName)
+      return match ?? null // null if ambiguous or no match
+    }
+
+    // Remap pessoas_identificadas
+    const remapped = new Map<string, string>()
+    aiResult.pessoas_identificadas = (aiResult.pessoas_identificadas ?? []).map((slug) => {
+      const match = resolve(slug)
+      if (match) {
+        remapped.set(slug, match)
+        console.log(`[IngestionPipeline] fuzzy match: "${slug}" → "${match}"`)
+        return match
+      }
+      return slug
+    })
+
+    // Remap pessoa_principal
+    if (aiResult.pessoa_principal && remapped.has(aiResult.pessoa_principal)) {
+      aiResult.pessoa_principal = remapped.get(aiResult.pessoa_principal)!
+    } else if (aiResult.pessoa_principal) {
+      const match = resolve(aiResult.pessoa_principal)
+      if (match) {
+        console.log(`[IngestionPipeline] fuzzy match (principal): "${aiResult.pessoa_principal}" → "${match}"`)
+        aiResult.pessoa_principal = match
+      }
+    }
+
+    // Remove remapped slugs from novas_pessoas_detectadas (they're not new)
+    if (remapped.size > 0) {
+      aiResult.novas_pessoas_detectadas = (aiResult.novas_pessoas_detectadas ?? [])
+        .filter((p) => !remapped.has(p.slug))
+    }
+  }
+
   private async processItem(item: QueueItem): Promise<void> {
     item.status    = 'processing'
     item.startedAt = Date.now()
@@ -467,10 +546,15 @@ export class IngestionPipeline {
         }
       }
 
+      // Fuzzy-match: remap AI-generated slugs to registered people by first name
+      // when the slug doesn't match exactly but the first name is unambiguous
+      const registeredPeople = registry.list()
+      this.fuzzyRemapSlugs(aiResult, registeredPeople)
+
       // Identify which people are registered vs unknown
       const pessoasIdentificadas = aiResult.pessoas_identificadas ?? []
       const naoCadastradas = pessoasIdentificadas.filter((s) => !registry.get(s))
-      const principal = aiResult.pessoa_principal  // re-read after pass 2 may have updated aiResult
+      const principal = aiResult.pessoa_principal  // re-read after fuzzy remap
 
       // Store newly detected (unregistered) people so the user can promote them
       const novas = aiResult.novas_pessoas_detectadas ?? []

@@ -15,7 +15,7 @@ export function runClaudePrompt(
   claudeBin: string,
   prompt: string,
   timeoutMs = 90_000,
-  maxRetries = 2,
+  maxRetries = 1,
 ): Promise<ClaudeRunnerResult> {
   return attemptRun(claudeBin, prompt, timeoutMs, 0, maxRetries)
 }

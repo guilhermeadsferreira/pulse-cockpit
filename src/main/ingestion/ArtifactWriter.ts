@@ -423,18 +423,25 @@ ${SECTION.saude_historico.close}
     ceremonyData: string,
   ): void {
     const perfilPath = join(this.pessoasDir, slug, 'perfil.md')
-    if (!existsSync(perfilPath)) return  // no profile yet — skip (first ingestion hasn't happened)
 
-    const tmpPath = perfilPath + '.tmp'
-    const bakPath = perfilPath + '.bak'
-    copyFileSync(perfilPath, bakPath)
-
-    const existing = readFileSync(perfilPath, 'utf-8')
     const now = new Date().toISOString()
     const today = now.slice(0, 10)
     const tipoLabel = ceremonyTipo  // e.g. 'daily', 'planning', 'retro'
 
-    let updated = this.updateFrontmatterFromCerimonia(existing, sinal, now)
+    let updated: string
+
+    const tmpPath = perfilPath + '.tmp'
+
+    if (!existsSync(perfilPath)) {
+      // No perfil.md yet — scaffold a minimal profile from ceremony signals
+      updated = this.createPerfilFromCerimonia(slug, sinal, now, today)
+    } else {
+      const bakPath = perfilPath + '.bak'
+      copyFileSync(perfilPath, bakPath)
+
+      const existing = readFileSync(perfilPath, 'utf-8')
+      updated = this.updateFrontmatterFromCerimonia(existing, sinal, now)
+    }
 
     // Pontos de desenvolvimento + feedbacks negativos → Pontos de Atenção Ativos
     const atencaoItems = [...sinal.pontos_de_desenvolvimento, ...sinal.feedbacks_negativos]
@@ -478,6 +485,68 @@ ${SECTION.saude_historico.close}
 
     writeFileSync(tmpPath, updated, 'utf-8')
     renameSync(tmpPath, perfilPath)
+  }
+
+  /**
+   * Creates a minimal perfil.md from ceremony signals when no profile exists yet.
+   * This ensures people who are registered but never had an individual ingestion
+   * still accumulate signals from collective ceremonies.
+   */
+  private createPerfilFromCerimonia(
+    slug: string,
+    sinal: CerimoniaSinalResult,
+    now: string,
+    today: string,
+  ): string {
+    return `---
+slug: "${slug}"
+schema_version: ${CURRENT_SCHEMA_VERSION}
+ultima_atualizacao: "${now}"
+ultima_ingestao: null
+total_artefatos: 0
+ultimo_1on1: null
+alertas_ativos: []
+saude: "${sinal.indicador_saude}"
+ultima_confianca: "${sinal.confianca}"
+necessita_1on1: ${sinal.necessita_1on1 ?? false}
+motivo_1on1: ${sinal.motivo_1on1 ? `"${sinal.motivo_1on1}"` : 'null'}
+alerta_estagnacao: false
+motivo_estagnacao: null
+sinal_evolucao: ${sinal.confianca !== 'baixa' && sinal.sinal_evolucao ? 'true' : 'false'}
+evidencia_evolucao: ${sinal.confianca !== 'baixa' && sinal.evidencia_evolucao ? `"${sinal.evidencia_evolucao}"` : 'null'}
+---
+
+# Perfil Vivo — ${slug}
+
+## Resumo Evolutivo
+${SECTION.resumo.open}
+Perfil criado a partir de sinais de cerimônia coletiva (${today}). Aguardando primeira ingestão individual para narrativa completa.
+${SECTION.resumo.close}
+
+## Ações Pendentes
+${SECTION.acoes.open}
+${SECTION.acoes.close}
+
+## Pontos de Atenção Ativos
+${SECTION.atencao.open}
+${SECTION.atencao.close}
+
+## Conquistas e Elogios
+${SECTION.conquistas.open}
+${SECTION.conquistas.close}
+
+## Temas Recorrentes
+${SECTION.temas.open}
+${SECTION.temas.close}
+
+## Histórico de Artefatos
+${SECTION.historico.open}
+${SECTION.historico.close}
+
+## Histórico de Saúde
+${SECTION.saude_historico.open}
+${SECTION.saude_historico.close}
+`
   }
 
   private updateFrontmatterFromCerimonia(content: string, sinal: CerimoniaSinalResult, now: string): string {

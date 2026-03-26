@@ -961,15 +961,21 @@ function stripMd(s: string): string {
 }
 
 function parsePerfilSections(raw: string) {
-  function extractBlock(label: string): string {
-    const re = new RegExp(`${escapeRe(label)}\n([\\s\\S]*?)\n<!-- FIM DO BLOCO GERENCIADO -->`)
+  function extractBlock(openLabel: string, closeLabel: string): string {
+    const re = new RegExp(`${escapeRe(openLabel)}\n([\\s\\S]*?)\n${escapeRe(closeLabel)}`)
     const m = raw.match(re)
     return m ? m[1].trim() : ''
   }
 
-  const resumoRaw = extractBlock('<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->')
+  const resumoRaw = extractBlock(
+    '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',
+    '<!-- FIM BLOCO RESUMO -->',
+  )
 
-  const acoesRaw = extractBlock('<!-- BLOCO GERENCIADO PELA IA — append de novos itens -->')
+  const acoesRaw = extractBlock(
+    '<!-- BLOCO GERENCIADO PELA IA — append de novos itens -->',
+    '<!-- FIM BLOCO ACOES -->',
+  )
   const acoes = acoesRaw
     .split('\n')
     .filter((l) => l.startsWith('- '))
@@ -978,15 +984,22 @@ function parsePerfilSections(raw: string) {
       text: stripMd(l.replace(/^- \[[ x]\] /, '').trim()),
     }))
 
-  const atencaoRaw = extractBlock('<!-- BLOCO GERENCIADO PELA IA — append apenas -->')
+  const atencaoRaw = extractBlock(
+    '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',
+    '<!-- FIM BLOCO ATENCAO -->',
+  )
   const atencao = atencaoRaw.split('\n').filter((l) => l.startsWith('- ')).map((l) => stripMd(l.slice(2).trim()))
 
-  // Conquistas block is the second "append apenas" block
-  const conquistasMatch = [...raw.matchAll(new RegExp(`${escapeRe('<!-- BLOCO GERENCIADO PELA IA — append apenas -->')}\\n([\\s\\S]*?)\\n<!-- FIM DO BLOCO GERENCIADO -->`, 'g'))]
-  const conquistasRaw = conquistasMatch[1]?.[1]?.trim() ?? ''
+  const conquistasRaw = extractBlock(
+    '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',
+    '<!-- FIM BLOCO CONQUISTAS -->',
+  )
   const conquistas = conquistasRaw.split('\n').filter((l) => l.startsWith('- ')).map((l) => stripMd(l.slice(2).trim()))
 
-  const temasRaw = extractBlock('<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->')
+  const temasRaw = extractBlock(
+    '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->',
+    '<!-- FIM BLOCO TEMAS -->',
+  )
   const temas = temasRaw.split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2).trim())
 
   return { resumo: stripMd(resumoRaw), acoes, atencao, conquistas, temas }
