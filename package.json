@@ -15,6 +15,7 @@
   "build": {
     "appId": "com.pulsecockpit.app",
     "productName": "Pulse Cockpit",
+    "artifactName": "Pulse-Cockpit-${version}-${arch}-${os}.${ext}",
     "copyright": "Copyright © 2026 Pulse Cockpit",
     "directories": {
       "output": "dist"
