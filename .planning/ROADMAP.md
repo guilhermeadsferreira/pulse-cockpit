@@ -160,3 +160,12 @@ Plans:
 - [x] 999.3-01-PLAN.md — Fundação híbrida: AppSettings com openRouterApiKey/useHybridModel + runOpenRouterPrompt no ClaudeRunner
 - [x] 999.3-02-PLAN.md — Rota condicional no Pass Cerimônia (IngestionPipeline) com fallback para Claude CLI
 - [x] 999.3-03-PLAN.md — UI: campo de API key + toggle na SettingsView
+
+### Phase 999.4: OpenRouter Estágio 2 — Pass 1 com modelo leve (BACKLOG)
+
+**Goal:** Migrar o Pass 1 (identificação de pessoa_principal e metadados básicos) para OpenRouter quando o modelo híbrido estiver ativo. Pass mais simples do pipeline — sem contexto de perfil, output estruturado básico — e com maior multiplicador de latência por rodar em todo artefato. Padrão já estabelecido no Pass Cerimônia (roteamento condicional + fallback para Claude CLI).
+**Requirements:** PERF-01
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:discuss-phase 999.4 when ready)
