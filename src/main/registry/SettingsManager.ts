@@ -10,6 +10,10 @@ export interface AppSettings {
   managerRole?: string
   /** Modelo Claude para passes de ingestão. Padrão: 'sonnet'. Aceita: 'haiku', 'sonnet', 'opus' */
   ingestionModel?: string
+  /** API key do OpenRouter para modelo híbrido. Armazenada em plaintext (uso pessoal). */
+  openRouterApiKey?: string
+  /** Ativar modelo híbrido (OpenRouter para passes elegíveis). Só tem efeito se openRouterApiKey presente. */
+  useHybridModel?: boolean
 }
 
 const SETTINGS_DIR  = join(homedir(), '.pulsecockpit')

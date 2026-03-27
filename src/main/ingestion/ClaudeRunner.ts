@@ -119,6 +119,71 @@ function spawnOnce(
   })
 }
 
+/** ISO timestamp helper for log lines */
+function ts(): string {
+  return new Date().toISOString()
+}
+
+/**
+ * Runs a prompt against the OpenRouter API and returns parsed JSON.
+ * Falls back to returning a failure result on HTTP or network errors.
+ */
+export async function runOpenRouterPrompt(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  timeoutMs = 60_000,
+): Promise<ClaudeRunnerResult> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const startMs = Date.now()
+  const bytes = prompt.length
+
+  console.log(`[OpenRouter] ${ts()} model=${model} (${bytes} bytes)`)
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'pulse-cockpit',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0,
+      }),
+    })
+
+    const elapsed = ((Date.now() - startMs) / 1000).toFixed(2)
+    console.log(`[OpenRouter] ${ts()} status=${response.status} elapsed=${elapsed}s`)
+
+    if (!response.ok) {
+      let errorMessage: string
+      try {
+        const body = await response.json() as { error?: { message?: string } }
+        errorMessage = body.error?.message ?? String(response.status)
+      } catch {
+        errorMessage = String(response.status)
+      }
+      return { success: false, error: `OpenRouter HTTP ${response.status}: ${errorMessage}` }
+    }
+
+    const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+    const content = body.choices?.[0]?.message?.content ?? ''
+    return parseOutput(content)
+  } catch (err: unknown) {
+    const elapsed = ((Date.now() - startMs) / 1000).toFixed(2)
+    const message = err instanceof Error ? err.message : String(err)
+    console.log(`[OpenRouter] ${ts()} error elapsed=${elapsed}s msg=${message}`)
+    return { success: false, error: message }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function parseOutput(raw: string): ClaudeRunnerResult {
   const text = raw.trim()
 

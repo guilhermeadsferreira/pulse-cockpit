@@ -6,6 +6,10 @@ export interface AppSettings {
   claudeBinPath: string
   managerName?: string
   managerRole?: string
+  /** API key do OpenRouter para modelo híbrido. Armazenada em plaintext (uso pessoal). */
+  openRouterApiKey?: string
+  /** Ativar modelo híbrido (OpenRouter para passes elegíveis). Só tem efeito se openRouterApiKey presente. */
+  useHybridModel?: boolean
 }
 
 export type PersonLevel   = 'junior' | 'pleno' | 'senior' | 'staff' | 'principal' | 'manager'
