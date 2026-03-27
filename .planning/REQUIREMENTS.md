@@ -24,7 +24,7 @@ Os dados de inteligência já são produzidos pelo pipeline V2. O gap é de supe
 
 ### Performance — Ingestão
 
-- [ ] **PERF-01**: Gestor consegue ativar o modelo híbrido (OpenRouter para Pass Cerimônia) via Settings e observar redução de latência de ingestão em relação ao baseline do Claude CLI. Critérios de aceitação: (1) campo openRouterApiKey e toggle useHybridModel aparecem na SettingsView e persistem em ~/.pulsecockpit/settings.json; (2) com híbrido ativo, Pass Cerimônia chama OpenRouter em vez de Claude CLI; (3) se OpenRouter falha, há fallback automático para Claude CLI com log de warning visível nos logs do main process.
+- [x] **PERF-01**: Gestor consegue ativar o modelo híbrido (OpenRouter para Pass Cerimônia) via Settings e observar redução de latência de ingestão em relação ao baseline do Claude CLI. Critérios de aceitação: (1) campo openRouterApiKey e toggle useHybridModel aparecem na SettingsView e persistem em ~/.pulsecockpit/settings.json; (2) com híbrido ativo, Pass Cerimônia chama OpenRouter em vez de Claude CLI; (3) se OpenRouter falha, há fallback automático para Claude CLI com log de warning visível nos logs do main process.
 
 ## V3 Requirements (deferred)
 
@@ -69,7 +69,7 @@ Os dados de inteligência já são produzidos pelo pipeline V2. O gap é de supe
 | SET-01 | Phase 2 | Pending |
 | PMPT-01 | Phase 3 | Pending |
 | PMPT-02 | Phase 3 | Pending |
-| PERF-01 | Phase 999.3 | Pending |
+| PERF-01 | Phase 999.3 | Complete |
 
 **Coverage:**
 - V2.1 requirements: 7 total

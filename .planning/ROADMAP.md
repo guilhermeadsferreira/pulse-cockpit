@@ -154,9 +154,9 @@ Plans:
 
 **Goal:** Reduzir a latência do pipeline de ingestão via modelo híbrido por estágios: Estágio 1 = Pass Cerimônia via OpenRouter (modelo leve); Estágio 2 (futuro) = Pass 1 se Estágio 1 confirmar viabilidade.
 **Requirements:** PERF-01
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
-- [ ] 999.3-01-PLAN.md — Fundação híbrida: AppSettings com openRouterApiKey/useHybridModel + runOpenRouterPrompt no ClaudeRunner
+- [x] 999.3-01-PLAN.md — Fundação híbrida: AppSettings com openRouterApiKey/useHybridModel + runOpenRouterPrompt no ClaudeRunner
 - [ ] 999.3-02-PLAN.md — Rota condicional no Pass Cerimônia (IngestionPipeline) com fallback para Claude CLI
 - [ ] 999.3-03-PLAN.md — UI: campo de API key + toggle na SettingsView
