@@ -149,3 +149,18 @@ Plans:
 
 Plans:
 - [ ] TBD (promote with /gsd:review-backlog when ready)
+
+### Phase 999.3: Performance de Ingestão + Modelo Híbrido (BACKLOG)
+
+**Goal:** Investigar e reduzir a latência do pipeline de ingestão. Hipótese principal: usar modelo leve via OpenRouter (GLM, Kimi) para passes simples (Pass 1 — classificação e identificação) e manter Claude apenas para passes que exigem qualidade (Pass 2, Pass de 1:1). Medir impacto real antes de qualquer mudança arquitetural.
+**Requirements:** TBD
+**Plans:** 0 plans
+**Note:** Mudança arquitetural significativa — hoje o projeto usa exclusivamente Claude Code CLI (sem API key). Antes de implementar: (1) medir latência real por passo, (2) avaliar se Pass 1 com modelo leve mantém qualidade de classificação, (3) decidir se vale adicionar gerenciamento de API key ao projeto.
+
+Hipóteses a validar:
+- Pass 1 (classificar tipo, identificar pessoa_principal) → modelo leve suficiente?
+- Pass Cerimônia (sinais por pessoa em reunião coletiva) → modelo leve suficiente?
+- Pass 2 e Pass de 1:1 (integração com perfil, resumo evolutivo, insights) → manter Claude
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
