@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen, Cpu, CheckCircle2, XCircle, User, RefreshCw } from 'lucide-react'
+import { FolderOpen, Cpu, CheckCircle2, XCircle, User, RefreshCw, Zap } from 'lucide-react'
 import type { AppSettings } from '../types/ipc'
 
 export function SettingsView() {
@@ -190,6 +190,42 @@ export function SettingsView() {
                   </button>
                 </div>
               )}
+            </Field>
+          </Section>
+
+          {/* Modelo Híbrido */}
+          <Section
+            icon={<Zap size={14} />}
+            title="Modelo Híbrido (OpenRouter)"
+            desc="Usa modelos leves via OpenRouter para passes de baixa complexidade — reduz latência de ingestão"
+          >
+            <Field
+              label="OpenRouter API Key"
+              hint="Cole sua key de api.openrouter.ai/keys — armazenada localmente em ~/.pulsecockpit/settings.json"
+            >
+              <input
+                style={styles.input}
+                type="password"
+                value={form.openRouterApiKey ?? ''}
+                onChange={(e) => set('openRouterApiKey', e.target.value || undefined)}
+                placeholder="sk-or-v1-..."
+              />
+            </Field>
+            <Field
+              label="Usar modelo híbrido"
+              hint={!form.openRouterApiKey ? 'Configure a API Key acima para ativar' : 'Ativo: Pass Cerimônia usará OpenRouter com fallback para Claude CLI'}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: form.openRouterApiKey ? 'pointer' : 'default' }}>
+                <input
+                  type="checkbox"
+                  checked={form.useHybridModel ?? false}
+                  disabled={!form.openRouterApiKey}
+                  onChange={(e) => set('useHybridModel', e.target.checked)}
+                />
+                <span style={{ fontSize: 12, color: form.openRouterApiKey ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  Ativar modelo híbrido
+                </span>
+              </label>
             </Field>
           </Section>
 
