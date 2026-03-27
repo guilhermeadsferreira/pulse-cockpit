@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.3
-last_updated: "2026-03-27T11:53:49.558Z"
+last_updated: "2026-03-27T11:59:08.007Z"
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 4
 ---
 
 # Project State — Pulse Cockpit V2.1
@@ -31,6 +31,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - Extração do resumo QR via regex sobre content já carregado no ArtifactCard (sem novo IPC)
 - Bloco QR renderizado como `<pre>` (não MarkdownPreview) para fidelidade ao texto copiado
 - [Phase 999.3]: ts() helper adicionado inline no ClaudeRunner como função privada (não existia no arquivo original)
+- [Phase 999.3]: hybridActive calculado antes do loop de batch no Pass Cerimônia (não por iteração) — openRouterModel hardcoded como google/gemma-3-4b-it:free nesta fase
 
 ## Phases
 
