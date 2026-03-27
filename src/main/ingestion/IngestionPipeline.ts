@@ -402,7 +402,20 @@ export class IngestionPipeline {
       today,
     })
 
-    const result = await runClaudePrompt(claudeBinPath, prompt, 60_000)
+    const hybridActive = !!(settings.useHybridModel && settings.openRouterApiKey)
+    const openRouterModel = settings.openRouterModel ?? 'google/gemma-3-27b-it'
+
+    let result: import('./ClaudeRunner').ClaudeRunnerResult
+    if (hybridActive) {
+      result = await runOpenRouterPrompt(settings.openRouterApiKey!, openRouterModel, prompt, 60_000)
+      if (!result.success) {
+        console.warn(`[IngestionPipeline] OpenRouter fallback gestor: ${result.error}`)
+        result = await runClaudePrompt(claudeBinPath, prompt, 60_000)
+      }
+    } else {
+      result = await runClaudePrompt(claudeBinPath, prompt, 60_000)
+    }
+
     if (!result.success || !result.data) {
       console.warn('[IngestionPipeline] sinal cerimônia gestor: sem dados')
       return
@@ -930,6 +943,10 @@ export class IngestionPipeline {
 
       const managerName = settings.managerName ?? undefined
 
+      const hybridActive = !!(settings.useHybridModel && settings.openRouterApiKey)
+      const openRouterModel = settings.openRouterModel ?? 'google/gemma-3-27b-it'
+      const PASS1_SYSTEM_PROMPT = 'You must respond with valid JSON only. Do not include markdown code blocks, explanations, or any text outside the JSON object.'
+
       // Pass 1: identify pessoa_principal (no perfil context yet)
       const promptPass1 = buildIngestionPrompt({
         teamRegistry,
@@ -938,14 +955,42 @@ export class IngestionPipeline {
         today,
         managerName,
       })
-      const resultPass1 = await runClaudePrompt(settings.claudeBinPath, promptPass1, 90_000)
+
+      let resultPass1: import('./ClaudeRunner').ClaudeRunnerResult
+
+      if (hybridActive) {
+        resultPass1 = await runOpenRouterPrompt(
+          settings.openRouterApiKey!,
+          openRouterModel,
+          promptPass1,
+          60_000,
+          PASS1_SYSTEM_PROMPT,
+        )
+        if (resultPass1.success && resultPass1.data) {
+          const schemaCheck = validateIngestionResult(resultPass1.data)
+          if (!schemaCheck.valid) {
+            const details = [
+              ...schemaCheck.missingFields.map((f) => `campo ausente: ${f}`),
+              ...schemaCheck.typeErrors,
+            ].join('; ')
+            console.warn(`[IngestionPipeline] OpenRouter Pass 1 schema inválido, fallback para Claude CLI: ${details}`)
+            resultPass1 = await runClaudePrompt(settings.claudeBinPath, promptPass1, 90_000)
+          }
+        } else {
+          console.warn(`[IngestionPipeline] OpenRouter Pass 1 falhou, fallback para Claude CLI: ${resultPass1.error}`)
+          resultPass1 = await runClaudePrompt(settings.claudeBinPath, promptPass1, 90_000)
+        }
+      } else {
+        resultPass1 = await runClaudePrompt(settings.claudeBinPath, promptPass1, 90_000)
+      }
+
       if (!resultPass1.success || !resultPass1.data) {
         throw new Error(resultPass1.error || 'Claude não retornou dados válidos')
       }
 
       const validation1 = validateIngestionResult(resultPass1.data)
       if (!validation1.valid) {
-        const details = [...validation1.missingFields.map(f => `campo ausente: ${f}`), ...validation1.typeErrors].join('; ')
+        const details = [...validation1.missingFields.map((f) => `campo ausente: ${f}`), ...validation1.typeErrors].join('; ')
         throw new Error(`Schema inválido na saída do Claude (pass 1): ${details}`)
       }
 
