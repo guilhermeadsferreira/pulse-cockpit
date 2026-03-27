@@ -165,7 +165,7 @@ Plans:
 
 **Goal:** Migrar o Pass 1 (identificação de pessoa_principal e metadados básicos) para OpenRouter quando o modelo híbrido estiver ativo. Pass mais simples do pipeline — sem contexto de perfil, output estruturado básico — e com maior multiplicador de latência por rodar em todo artefato. Padrão já estabelecido no Pass Cerimônia (roteamento condicional + fallback para Claude CLI).
 **Requirements:** PERF-01
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (promote with /gsd:discuss-phase 999.4 when ready)
+- [ ] 999.4-01-PLAN.md — Rota híbrida no Pass 1: runOpenRouterPrompt com system prompt + roteamento condicional em processItem
