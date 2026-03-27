@@ -125,7 +125,7 @@ These constraints apply to every plan in this roadmap:
 
 ---
 
-*Last updated: 2026-03-26*
+*Last updated: 2026-03-27*
 
 ---
 
@@ -152,15 +152,11 @@ Plans:
 
 ### Phase 999.3: Performance de Ingestão + Modelo Híbrido (BACKLOG)
 
-**Goal:** Investigar e reduzir a latência do pipeline de ingestão. Hipótese principal: usar modelo leve via OpenRouter (GLM, Kimi) para passes simples (Pass 1 — classificação e identificação) e manter Claude apenas para passes que exigem qualidade (Pass 2, Pass de 1:1). Medir impacto real antes de qualquer mudança arquitetural.
-**Requirements:** TBD
-**Plans:** 0 plans
-**Note:** Mudança arquitetural significativa — hoje o projeto usa exclusivamente Claude Code CLI (sem API key). Antes de implementar: (1) medir latência real por passo, (2) avaliar se Pass 1 com modelo leve mantém qualidade de classificação, (3) decidir se vale adicionar gerenciamento de API key ao projeto.
-
-Hipóteses a validar:
-- Pass 1 (classificar tipo, identificar pessoa_principal) → modelo leve suficiente?
-- Pass Cerimônia (sinais por pessoa em reunião coletiva) → modelo leve suficiente?
-- Pass 2 e Pass de 1:1 (integração com perfil, resumo evolutivo, insights) → manter Claude
+**Goal:** Reduzir a latência do pipeline de ingestão via modelo híbrido por estágios: Estágio 1 = Pass Cerimônia via OpenRouter (modelo leve); Estágio 2 (futuro) = Pass 1 se Estágio 1 confirmar viabilidade.
+**Requirements:** PERF-01
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+- [ ] 999.3-01-PLAN.md — Fundação híbrida: AppSettings com openRouterApiKey/useHybridModel + runOpenRouterPrompt no ClaudeRunner
+- [ ] 999.3-02-PLAN.md — Rota condicional no Pass Cerimônia (IngestionPipeline) com fallback para Claude CLI
+- [ ] 999.3-03-PLAN.md — UI: campo de API key + toggle na SettingsView
