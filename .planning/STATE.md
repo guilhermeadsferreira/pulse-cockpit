@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.3
-last_updated: "2026-03-27T11:59:08.007Z"
+last_updated: "2026-03-27T12:28:32.820Z"
 progress:
   total_phases: 6
   completed_phases: 2
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 
 **Milestone:** V2.1 — Completar camada UI e prompts da V2
 **Active phase:** 999.3 — ingestion-performance-hybrid-model (in progress)
-**Last action:** Completed 999.3-01-PLAN.md (2026-03-27)
+**Last action:** Completed 999.3-03-PLAN.md (2026-03-27) — Phase 999.3 fully complete (3/3 plans)
 
 ## Decisions
 
@@ -32,6 +32,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - Bloco QR renderizado como `<pre>` (não MarkdownPreview) para fidelidade ao texto copiado
 - [Phase 999.3]: ts() helper adicionado inline no ClaudeRunner como função privada (não existia no arquivo original)
 - [Phase 999.3]: hybridActive calculado antes do loop de batch no Pass Cerimônia (não por iteração) — openRouterModel hardcoded como google/gemma-3-4b-it:free nesta fase
+- [Phase 999.3]: global.d.ts não alterado — AppSettings importado de ipc.ts que já tem os campos novos (plan 01)
+- [Phase 999.3]: Toggle desabilitado quando openRouterApiKey ausente — evita estado inválido (useHybridModel=true sem key)
 
 ## Phases
 
@@ -51,4 +53,4 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 
 ## Next Action
 
-Phase 999.3 plan 01 complete. Continue with 999.3-02 (IngestionPipeline hybrid routing) or 999.3-03 (SettingsView hybrid fields UI).
+Phase 999.3 complete (all 3 plans done). Next: Phase 1 (PersonView Intelligence) — exibir insights de 1:1, sinais de terceiros e botão QR no perfil de cada liderado.
