@@ -1,9 +1,40 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
-import type { ExternalDataSnapshot } from '../types/ipc'
 
 interface ExternalDataCardProps {
   slug: string
+}
+
+/** Shape returned by validated external:get-data IPC handler */
+interface ExternalDataSnapshot {
+  atualizadoEm: string
+  jira: {
+    sprintAtual?: { nome: string; id: number } | null
+    issuesAbertas: number
+    issuesFechadasSprint: number
+    storyPointsSprint: number
+    workloadScore: 'alto' | 'medio' | 'baixo'
+    bugsAtivos: number
+    blockersAtivos: Array<{ key: string; summary: string }>
+    tempoMedioCicloDias: number
+  } | null
+  github: {
+    commits30d: number
+    commitsPorSemana: number
+    prsMerged30d: number
+    prsAbertos: number
+    prsRevisados: number
+    tempoMedioAbertoDias: number
+    tempoMedioReviewDias: number
+    tamanhoMedioPR: { additions: number; deletions: number }
+  } | null
+  insights: Array<{
+    tipo: string
+    severidade: 'alta' | 'media' | 'baixa'
+    descricao: string
+    evidencia?: string
+    acaoSugerida?: string
+  }>
 }
 
 export function ExternalDataCard({ slug }: ExternalDataCardProps) {
@@ -51,11 +82,6 @@ export function ExternalDataCard({ slug }: ExternalDataCardProps) {
 
   if (!data) return null
 
-  const jira = data.jira
-  const github = data.github
-  const insights = data.insights ?? []
-  const blockers = jira?.blockersAtivos?.length ?? 0
-
   return (
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)',
@@ -90,63 +116,48 @@ export function ExternalDataCard({ slug }: ExternalDataCardProps) {
       </div>
 
       {/* Jira */}
-      {jira && (
+      {data.jira && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             JIRA
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {jira.sprintAtual?.nome && <DataRow label="Sprint" value={jira.sprintAtual.nome} />}
-            {jira.issuesAbertas != null && <DataRow label="Issues abertas" value={String(jira.issuesAbertas)} />}
-            {jira.issuesFechadasSprint != null && <DataRow label="Issues fechadas" value={String(jira.issuesFechadasSprint)} />}
-            {jira.storyPointsSprint != null && <DataRow label="SP no sprint" value={String(jira.storyPointsSprint)} />}
-            {jira.workloadScore && <DataRow label="Workload" value={jira.workloadScore} />}
-            {jira.bugsAtivos != null && jira.bugsAtivos > 0 && <DataRow label="Bugs ativos" value={String(jira.bugsAtivos)} highlight={false} />}
-            {blockers > 0 && <DataRow label="Blockers" value={`${blockers} ativo(s)`} highlight />}
-          </div>
-          <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: '1.4' }}>
-            Contagens não refletem impacto ou qualidade
+            {data.jira.sprintAtual?.nome && <DataRow label="Sprint" value={data.jira.sprintAtual.nome} />}
+            {data.jira.issuesAbertas != null && <DataRow label="Issues abertas" value={String(data.jira.issuesAbertas)} />}
+            {data.jira.workloadScore && <DataRow label="Workload" value={data.jira.workloadScore} />}
+            {data.jira.blockersAtivos.length > 0 && <DataRow label="Blockers" value={`${data.jira.blockersAtivos.length} ativo(s)`} highlight />}
           </div>
         </div>
       )}
 
       {/* GitHub */}
-      {github && (
+      {data.github && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             GITHUB
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {github.commits30d != null && <DataRow label="Commits (30d)" value={String(github.commits30d)} />}
-            {github.commitsPorSemana != null && <DataRow label="Commits/semana" value={String(github.commitsPorSemana)} />}
-            {github.prsMerged30d != null && <DataRow label="PRs merged" value={String(github.prsMerged30d)} />}
-            {github.prsAbertos != null && <DataRow label="PRs abertos" value={String(github.prsAbertos)} />}
-            {github.prsRevisados != null && <DataRow label="Reviews" value={String(github.prsRevisados)} />}
-            {github.tempoMedioAbertoDias != null && <DataRow label="PR aberto (dias)" value={github.tempoMedioAbertoDias.toFixed(1)} />}
-            {github.tempoMedioReviewDias != null && <DataRow label="Tempo review" value={github.tempoMedioReviewDias.toFixed(1)} />}
-          </div>
-          <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: '1.4' }}>
-            Contagens não refletem impacto ou qualidade
+            {data.github.commits30d != null && <DataRow label="Commits (30d)" value={String(data.github.commits30d)} />}
+            {data.github.prsMerged30d != null && <DataRow label="PRs merged" value={String(data.github.prsMerged30d)} />}
+            {data.github.prsAbertos != null && <DataRow label="PRs abertos" value={String(data.github.prsAbertos)} />}
+            {data.github.prsRevisados != null && <DataRow label="Reviews" value={String(data.github.prsRevisados)} />}
           </div>
         </div>
       )}
 
       {/* Insights */}
-      {insights.length > 0 && (
+      {data.insights.length > 0 && (
         <div style={{ padding: '10px 16px' }}>
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             INSIGHTS CRUZADOS
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {insights.map((insight, i) => (
+            {data.insights.map((insight, i) => (
               <div key={i} style={{
-                fontSize: 11,
-                color: insight.tipo === 'destaque'
-                  ? 'var(--green)'
-                  : insight.severidade === 'alta' ? 'var(--red)' : 'var(--text-secondary)',
+                fontSize: 11, color: insight.severidade === 'alta' ? 'var(--red)' : 'var(--text-secondary)',
                 padding: '3px 0',
               }}>
-                {insight.tipo === 'destaque' ? '✨' : insight.severidade === 'alta' ? '⚠️' : insight.severidade === 'media' ? '🔶' : 'ℹ️'} {insight.descricao}
+                {insight.severidade === 'alta' ? '\u26A0\uFE0F' : insight.severidade === 'media' ? '\uD83D\uDD36' : '\u2139\uFE0F'} {insight.descricao}
               </div>
             ))}
           </div>
@@ -170,4 +181,3 @@ function DataRow({ label, value, highlight }: { label: string; value: string; hi
     </div>
   )
 }
-
