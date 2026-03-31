@@ -340,7 +340,11 @@ function registerIpcHandlers(): void {
       const pdiMatch = configRaw.match(/pdi:\n([\s\S]*?)(?=\n\w|\n$|$)/)
       const pdiEstruturado = pdiMatch?.[1]?.trim() || ''
 
-      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado })
+      // Extract Dados Externos section from perfil.md
+      const externalMatch = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+      const externalData = externalMatch?.[1]?.trim() || ''
+
+      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData })
       const result = await runWithProvider('agendaGeneration', settings, prompt, {
         claudeBinPath: settings.claudeBinPath,
         claudeTimeoutMs: 90_000,
@@ -402,9 +406,13 @@ function registerIpcHandlers(): void {
     const pdiMatch = configRaw.match(/pdi:\n([\s\S]*?)(?=\n\w|\n$|$)/)
     const pdiEvolucao = pdiMatch?.[1]?.trim() || ''
 
+    // Extract Dados Externos section from perfil.md
+    const externalMatchCycle = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+    const externalData = externalMatchCycle?.[1]?.trim() || ''
+
     const { prompt, truncatedArtifacts, totalArtifacts } = buildCyclePrompt({
       configYaml: configRaw, perfilMd: perfilData.raw, artifacts, periodoInicio, periodoFim,
-      insights1on1, correlacoes, followupHistorico, tendenciaEmocional, pdiEvolucao,
+      insights1on1, correlacoes, followupHistorico, tendenciaEmocional, pdiEvolucao, externalData,
     })
 
     if (truncatedArtifacts > 0) {
