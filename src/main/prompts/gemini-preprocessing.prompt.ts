@@ -6,6 +6,7 @@ export interface GeminiPreprocessingResult {
     data_reuniao?: string
     participantes: string[]
     duracao_minutos?: number
+    speaker_confidence: 'alta' | 'media' | 'baixa'  // confiança na atribuição de fala
   }
   /** Estatísticas do processamento */
   estatisticas: {
@@ -22,10 +23,29 @@ export interface GeminiPreprocessingResult {
 export type GeminiPreprocessingMode = 'light' | 'full'
 
 /**
- * Detecta o modo de pré-processamento adequado com base no nome do arquivo.
- * 1:1s precisam do modo 'light' para preservar dinâmica conversacional e sinais emocionais.
+ * Detecta o modo de pré-processamento adequado.
+ * Prioridade: análise de conteúdo (quando disponível) > nome do arquivo.
+ *
+ * Análise de conteúdo: conta speakers distintos nas primeiras 500 chars.
+ * - 1-2 speakers → 'light' (1:1 ou conversa bilateral)
+ * - 3+ speakers → 'full' (cerimônia coletiva)
  */
-export function detectPreprocessingMode(fileName: string): GeminiPreprocessingMode {
+export function detectPreprocessingMode(
+  fileName: string,
+  contentPreview?: string,
+): GeminiPreprocessingMode {
+  // Análise de conteúdo tem prioridade se disponível
+  if (contentPreview) {
+    const preview = contentPreview.slice(0, 500)
+    // Conta speakers distintos: padrões como "Nome:", "Speaker 1:", "[Nome]"
+    const speakerMatches = preview.match(/^[A-ZÀ-Ú][a-zA-ZÀ-ú\s]{1,30}:/gm) || []
+    const uniqueSpeakers = new Set(speakerMatches.map(s => s.trim().toLowerCase()))
+    if (uniqueSpeakers.size >= 3) return 'full'
+    if (uniqueSpeakers.size <= 2 && uniqueSpeakers.size > 0) return 'light'
+    // Se não detectou speakers pelo padrão, cai para análise por filename
+  }
+
+  // Fallback: análise por nome de arquivo (comportamento original)
   const lower = fileName.toLowerCase()
   if (
     lower.includes('1on1') ||
@@ -93,7 +113,8 @@ Produza um JSON:
   "metadados": {
     "data_reuniao": "YYYY-MM-DD ou null",
     "participantes": ["Nome Gestor", "Nome Liderado"],
-    "duracao_minutos": number ou null
+    "duracao_minutos": number ou null,
+    "speaker_confidence": "alta|media|baixa — quão confiável é a atribuição de fala. 'alta': cada fala tem nome/label claro e consistente. 'media': maioria identificada, algumas ambiguidades. 'baixa': sem identificação ou com atribuição inconsistente."
   },
   "estatisticas": {
     "tokens_removidos": number,
@@ -173,7 +194,8 @@ Produza um JSON com a seguinte estrutura:
   "metadados": {
     "data_reuniao": "YYYY-MM-DD ou null",
     "participantes": ["Nome 1", "Nome 2", ...],
-    "duracao_minutos": number ou null
+    "duracao_minutos": number ou null,
+    "speaker_confidence": "alta|media|baixa — quão confiável é a atribuição de fala. 'alta': cada fala tem nome/label claro e consistente. 'media': maioria identificada, algumas ambiguidades. 'baixa': sem identificação ou com atribuição inconsistente."
   },
   "estatisticas": {
     "tokens_removidos": number,
