@@ -44,7 +44,11 @@ Plans:
   1. Temas semanticamente equivalentes (substring/keyword match) sao mesclados automaticamente antes de persistir no perfil — sem duplicatas visiveis na UI
   2. O arquivo health history nunca ultrapassa 50 entradas ativas; entradas mais antigas sao comprimidas automaticamente sem perda de tendencia
   3. Dados externos (Jira, GitHub) chegam ao frontend como JSON tipado, eliminando parsing regex fragil no renderer
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Fuzzy theme dedup + health history auto-compression (PIPE-01, PIPE-02)
+- [ ] 02-02-PLAN.md — Typed external data IPC with validation (PIPE-03)
 
 ### Phase 3: GitHub Metrics & CrossAnalyzer
 **Goal**: O gestor ve metricas de qualidade de code review, colaboracao e cobertura de testes, com insights do CrossAnalyzer contextualizados e relatorios com narrativa e baseline pessoal
@@ -77,6 +81,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Prompt Refinements | 5/5 | Complete   | 2026-03-31 |
-| 2. Pipeline & Schema | 0/TBD | Not started | - |
+| 2. Pipeline & Schema | 0/2 | Not started | - |
 | 3. GitHub Metrics & CrossAnalyzer | 0/TBD | Not started | - |
 | 4. Action System & UX Avancado | 0/TBD | Not started | - |
