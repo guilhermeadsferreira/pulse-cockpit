@@ -9,6 +9,8 @@ import { InboxView }        from './views/InboxView'
 import { MeetingsFeedView } from './views/MeetingsFeedView'
 import { EuView }             from './views/EuView'
 import { RefinamentosView }   from './views/RefinamentosView'
+import LogsView               from './views/LogsView'
+import { RelatoriosView }     from './views/RelatoriosView'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -19,7 +21,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return { error }
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack)
+    window.api.logs.write('error', 'ErrorBoundary', error.message, { stack: error.stack, componentStack: info.componentStack })
   }
   render() {
     if (this.state.error) {
@@ -68,6 +70,8 @@ function AppContent() {
     'feed':         <MeetingsFeedView />,
     'eu':           <EuView />,
     'refinamentos': <RefinamentosView />,
+    'logs':          <LogsView />,
+    'reports':       <RelatoriosView />,
   }[view] ?? <DashboardView relacao="liderado" />
 
   return <Layout>{content}</Layout>

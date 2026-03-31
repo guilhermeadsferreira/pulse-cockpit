@@ -13,6 +13,8 @@ export interface CyclePromptParams {
   followupHistorico?:     string
   tendenciaEmocional?:    string
   pdiEvolucao?:           string
+  // V3 enrichments
+  externalData?:          string
 }
 
 export interface CyclePromptBuildResult {
@@ -23,7 +25,7 @@ export interface CyclePromptBuildResult {
 
 export function buildCyclePrompt(params: CyclePromptParams): CyclePromptBuildResult {
   const { configYaml, perfilMd, artifacts, periodoInicio, periodoFim,
-    insights1on1 = '', correlacoes = '', followupHistorico = '', tendenciaEmocional = '', pdiEvolucao = '' } = params
+    insights1on1 = '', correlacoes = '', followupHistorico = '', tendenciaEmocional = '', pdiEvolucao = '', externalData = '' } = params
 
   // Budget artifacts from most recent → oldest, stop when limit is reached.
   // Most recent artifacts are most relevant for calibration; perfil.md covers older history.
@@ -58,7 +60,7 @@ ${perfilMd}
 
 ## Artefatos do período (do mais antigo ao mais recente)
 ${artifactsText}
-${insights1on1 ? `\n## Insights de 1:1 do período\n${insights1on1}\n` : ''}${correlacoes ? `\n## Correlações de terceiros confirmadas\n${correlacoes}\n` : ''}${followupHistorico ? `\n## Histórico de follow-up de ações\n${followupHistorico}\n` : ''}${tendenciaEmocional ? `\n## Tendência emocional no período\n${tendenciaEmocional}\n` : ''}${pdiEvolucao ? `\n## Evolução do PDI\n${pdiEvolucao}\n` : ''}
+${insights1on1 ? `\n## Insights de 1:1 do período\n${insights1on1}\n` : ''}${correlacoes ? `\n## Correlações de terceiros confirmadas\n${correlacoes}\n` : ''}${followupHistorico ? `\n## Histórico de follow-up de ações\n${followupHistorico}\n` : ''}${tendenciaEmocional ? `\n## Tendência emocional no período\n${tendenciaEmocional}\n` : ''}${pdiEvolucao ? `\n## Evolução do PDI\n${pdiEvolucao}\n` : ''}${externalData ? `\n## Dados Externos (métricas objetivas do período)\n${externalData}\n` : ''}
 ## Sua tarefa
 
 Sintetize o ciclo completo desta pessoa com base nos artefatos e no perfil acumulado. Retorne APENAS um JSON válido (sem texto antes ou depois):
@@ -80,7 +82,7 @@ Regras:
 - "padroes_de_comportamento": padrões positivos e negativos observados ao longo do ciclo, com evidências. Use insights de 1:1 como fonte quando disponíveis — cite datas.
 - "evolucao_frente_ao_cargo": parágrafo narrativo (3–5 frases) descrevendo a evolução da pessoa frente ao seu nível e cargo esperado. Cite evidências e conecte com evolução do PDI quando disponível.
 - "pontos_de_desenvolvimento": áreas concretas de desenvolvimento identificadas, priorizadas por múltiplas fontes (artefatos + sinais de terceiros + insights de 1:1). Convergência de fontes = evidência forte.
-- "conclusao_para_calibracao": parágrafo conclusivo (3–5 frases) pronto para ser lido no fórum. Deve incluir recomendação clara: acima das expectativas / dentro das expectativas / abaixo das expectativas. Na accountability, mencione proporção de ações cumpridas vs abandonadas quando dados de follow-up estiverem disponíveis.
+- "conclusao_para_calibracao": parágrafo conclusivo (3–5 frases) pronto para ser lido no fórum. Deve incluir recomendação clara: acima das expectativas / dentro das expectativas / abaixo das expectativas. Na accountability, mencione proporção de ações cumpridas vs abandonadas quando dados de follow-up estiverem disponíveis. Inclua evidências quantitativas de dados externos (Jira, GitHub) quando disponíveis — ex: velocity, tempo de ciclo, PRs merged, code reviews.
 - "flag_promovibilidade": "sim" se há evidências claras para promoção neste ciclo, "nao" se não há, "avaliar" se há potencial mas requer mais evidências ou mais tempo. Na promovibilidade, cruze: conquistas + feedback de terceiros + PDI + tendência emocional.
 - "evidencias_promovibilidade": 3–5 bullets de evidência concreta que sustentam o flag_promovibilidade. Cada bullet deve ser autônomo e citável no fórum: descreva um fato específico (entrega, comportamento, feedback de terceiro) com data ou contexto. Se flag_promovibilidade for "nao", liste as lacunas ou áreas que ainda precisam ser demonstradas para uma futura promoção. Nunca retorne array vazio — sempre há algo a dizer.`
 

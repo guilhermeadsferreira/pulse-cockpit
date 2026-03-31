@@ -42,6 +42,27 @@ export interface AppSettings {
   defaultProvider?: LLMProvider
   /** Override de provider por operação. Operações sem override herdam defaultProvider. */
   providers?: Partial<Record<IngestionOperation, OperationProviderConfig>>
+  /** Nível mínimo de log. Padrão: 'info'. */
+  logLevel?: 'debug' | 'info' | 'warn' | 'error'
+
+  // Jira
+  jiraBaseUrl?: string
+  jiraEmail?: string
+  jiraApiToken?: string
+  jiraProjectKey?: string
+  jiraBoardId?: number
+  jiraEnabled?: boolean
+
+  // GitHub
+  githubToken?: string
+  githubOrg?: string
+  githubRepos?: string[]
+  githubEnabled?: boolean
+
+  // Relatórios
+  dailyReportEnabled?: boolean
+  dailyReportTime?: string
+  sprintReportEnabled?: boolean
 }
 
 export type PersonLevel   = 'junior' | 'pleno' | 'senior' | 'staff' | 'principal' | 'manager'
@@ -75,6 +96,9 @@ export interface PersonConfig {
   motivo_alerta?:        string
   criado_em:             string
   atualizado_em:         string
+  // Identidade externa (V3)
+  jiraEmail?:            string
+  githubUsername?:       string
 }
 
 export interface ArtifactMeta {
@@ -232,7 +256,7 @@ export interface CycleReportResult {
 // ── Módulo Eu ─────────────────────────────────────────────────
 
 export type DemandaStatus = 'open' | 'done'
-export type DemandaOrigem = 'Líder' | 'Liderado' | 'Par' | 'Eu'
+export type DemandaOrigem = 'Líder' | 'Liderado' | 'Par' | 'Eu' | 'Sistema'
 
 export interface Demanda {
   id:              string
@@ -303,4 +327,14 @@ export interface CerimoniaSinalResult {
   necessita_1on1: boolean
   motivo_1on1: string | null
   confianca: 'alta' | 'media' | 'baixa'
+}
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export interface LogEntry {
+  timestamp: string
+  level: LogLevel
+  module: string
+  message: string
+  data?: Record<string, unknown>
 }

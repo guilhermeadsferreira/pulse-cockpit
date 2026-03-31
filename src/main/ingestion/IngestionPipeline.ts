@@ -17,6 +17,8 @@ import { SettingsManager } from '../registry/SettingsManager'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
 import { ProfileCompressor } from './ProfileCompressor'
 import { join as pathJoin, dirname, normalize } from 'path'
+import { Logger, ModuleLogger } from '../logging'
+import { ExternalDataPass } from '../external/ExternalDataPass'
 
 export type QueueItemStatus = 'queued' | 'processing' | 'done' | 'pending' | 'error'
 
@@ -52,7 +54,11 @@ export class IngestionPipeline {
   private active1on1 = 0
   private pending1on1: Array<() => void> = []
 
-  constructor(private workspacePath: string) {}
+  constructor(private workspacePath: string) {
+    this.log = Logger.getInstance().child('IngestionPipeline')
+  }
+
+  private log: ModuleLogger
 
   private get pendingQueuePath(): string {
     return pathJoin(this.workspacePath, 'inbox', 'pending-queue.json')
@@ -67,7 +73,7 @@ export class IngestionPipeline {
     try {
       writeFileSync(this.pendingQueuePath, JSON.stringify(pending, null, 2), 'utf-8')
     } catch (err) {
-      console.error('[IngestionPipeline] failed to save pending queue:', err)
+      this.log.error('save pending queue failed', { error: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -89,9 +95,9 @@ export class IngestionPipeline {
           this.notifyRenderer('ingestion:started', { filePath: item.filePath, fileName: item.fileName })
         }
       }
-      console.log(`[IngestionPipeline] restored ${valid.length} pending item(s) from disk`)
+      this.log.info('restored pending', { count: valid.length })
     } catch (err) {
-      console.error('[IngestionPipeline] failed to restore pending queue:', err)
+      this.log.error('restore pending queue failed', { error: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -110,15 +116,15 @@ export class IngestionPipeline {
       if (registry.get(slug)) {
         try {
           await this.syncItemToPerson(item, slug)
-          console.log(`[IngestionPipeline] auto-synced pending: ${item.fileName} → ${slug}`)
+          this.log.info('auto-synced pending', { fileName: item.fileName, slug })
           synced++
         } catch (err) {
-          console.error(`[IngestionPipeline] auto-sync error: ${item.fileName}`, err)
+          this.log.error('auto-sync error', { fileName: item.fileName, error: err instanceof Error ? err.message : String(err) })
         }
       }
     }
     if (synced > 0) {
-      console.log(`[IngestionPipeline] auto-synced ${synced} pending item(s) on startup`)
+      this.log.info('auto-sync startup complete', { synced })
     }
     return synced
   }
@@ -133,7 +139,7 @@ export class IngestionPipeline {
     // Backpressure: reject if active queue is at capacity
     const activeCount = this.queue.filter((i) => i.status === 'queued' || i.status === 'processing' || i.status === 'pending').length
     if (activeCount >= MAX_QUEUE_SIZE) {
-      console.warn(`[IngestionPipeline] queue full (${MAX_QUEUE_SIZE}), rejecting: ${fileName}`)
+      this.log.warn('queue full', { maxSize: MAX_QUEUE_SIZE, fileName })
       this.notifyRenderer('ingestion:failed', {
         filePath,
         error: `Fila cheia (máximo ${MAX_QUEUE_SIZE} itens). Aguarde o processamento atual terminar.`,
@@ -150,7 +156,7 @@ export class IngestionPipeline {
 
     this.queue.unshift(item)
     this.notifyRenderer('ingestion:started', { filePath, fileName })
-    console.log(`[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT enqueued: ${fileName}`)
+    this.log.info('enqueued', { fileName })
 
     this.drainQueue()
   }
@@ -172,14 +178,14 @@ export class IngestionPipeline {
     )
     if (matching.length === 0) return 0
 
-    console.log(`[IngestionPipeline] syncing ${matching.length} pending item(s) for "${registeredSlug}"`)
+    this.log.info('syncing pending', { count: matching.length, slug: registeredSlug })
 
     for (const item of matching) {
       try {
         await this.syncItemToPerson(item, registeredSlug)
-        console.log(`[IngestionPipeline] synced: ${item.fileName} → ${registeredSlug}`)
+        this.log.info('synced', { fileName: item.fileName, slug: registeredSlug })
       } catch (err) {
-        console.error(`[IngestionPipeline] sync error: ${item.fileName}`, err)
+        this.log.error('sync error', { fileName: item.fileName, error: err instanceof Error ? err.message : String(err) })
       }
     }
     return matching.length
@@ -235,7 +241,7 @@ export class IngestionPipeline {
             atualizadoEm: date,
             status:      'open',
           })
-          console.log(`[IngestionPipeline] ação do gestor → Demandas: "${acao.descricao.slice(0, 60)}" [${titulo}]`)
+          this.log.info('gestor action → Demandas', { descricao: acao.descricao.slice(0, 60), titulo })
           continue
         }
 
@@ -250,9 +256,7 @@ export class IngestionPipeline {
         if (acao.responsavel_slug && registeredSlugs.has(acao.responsavel_slug)) {
           actionReg.createFromArtifact(acao.responsavel_slug, [acao], uniqueFileName, date, registeredSlugs)
         } else {
-          console.warn(
-            `[IngestionPipeline] ação coletiva sem dono: responsavel="${acao.responsavel}" (slug não resolvido) — fonte: ${uniqueFileName}`
-          )
+          this.log.warn('ação coletiva sem dono', { responsavel: acao.responsavel, source: uniqueFileName })
         }
       }
     }
@@ -261,7 +265,7 @@ export class IngestionPipeline {
     try {
       new CicloRegistry(this.workspacePath).addFromIngestion(aiResult, null)
     } catch (err) {
-      console.warn('[IngestionPipeline] ciclo auto-populate (coletivo) falhou (não crítico):', err)
+      this.log.warn('ciclo auto-populate (coletivo) falhou', { error: err instanceof Error ? err.message : String(err) })
     }
 
     item.status     = 'done'
@@ -298,14 +302,14 @@ export class IngestionPipeline {
       if (registeredParticipants.length > 0) {
         this.runCerimoniaSignalsForPeople(
           registeredParticipants, aiResult, text, uniqueFileName, claudeBinPath, registry
-        ).catch((err) => console.warn('[IngestionPipeline] sinais cerimônia falhou:', err))
+        ).catch((err) => this.log.warn('sinais cerimônia falhou', { error: err instanceof Error ? err.message : String(err) }))
       }
 
       // Gestor ceremony signal: capture manager's own participation → Meu Ciclo
       const settings2 = SettingsManager.load()
       if (settings2.managerName) {
         this.runCerimoniaSinalForGestor(aiResult, text, claudeBinPath, settings2)
-          .catch((err) => console.warn('[IngestionPipeline] sinal cerimônia gestor falhou:', err))
+          .catch((err) => this.log.warn('sinal cerimônia gestor falhou', { error: err instanceof Error ? err.message : String(err) }))
       }
     }
   }
@@ -357,7 +361,7 @@ export class IngestionPipeline {
               openRouterTimeoutMs: 60_000,
             })
             if (!result.success || !result.data) {
-              console.warn(`[IngestionPipeline] sinal cerimônia falhou para "${slug}": ${result.error ?? 'sem dados'}`)
+              this.log.warn('sinal cerimônia falhou', { slug, error: result.error ?? 'sem dados' })
               return
             }
 
@@ -367,7 +371,7 @@ export class IngestionPipeline {
                 ...validation.missingFields.map((f) => `campo ausente: ${f}`),
                 ...validation.typeErrors,
               ].join('; ')
-              console.warn(`[IngestionPipeline] schema inválido no sinal cerimônia para "${slug}": ${details}`)
+              this.log.warn('schema inválido no sinal cerimônia', { slug, details })
               return
             }
 
@@ -382,7 +386,7 @@ export class IngestionPipeline {
                 aiResult.tipo,
                 aiResult.data_artefato,
               )
-              console.log(`[IngestionPipeline] sinal cerimônia aplicado: "${slug}" ← ${aiResult.tipo} ${aiResult.data_artefato}`)
+              this.log.info('sinal cerimônia aplicado', { slug, tipo: aiResult.tipo, data: aiResult.data_artefato })
             } finally {
               release()
             }
@@ -393,7 +397,7 @@ export class IngestionPipeline {
               data: aiResult.data_artefato,
             })
           } catch (err) {
-            console.warn(`[IngestionPipeline] sinal cerimônia erro para "${slug}":`, err)
+            this.log.warn('sinal cerimônia erro', { slug, error: err instanceof Error ? err.message : String(err) })
           }
         })
       )
@@ -437,7 +441,7 @@ export class IngestionPipeline {
     })
 
     if (!result.success || !result.data) {
-      console.warn('[IngestionPipeline] sinal cerimônia gestor: sem dados')
+      this.log.warn('sinal cerimônia gestor: sem dados')
       return
     }
     const validation = validateCerimoniaSinalResult(result.data)
@@ -480,7 +484,7 @@ export class IngestionPipeline {
     ].filter((l) => l !== '').join('\n')
 
     writeFileSync(filePath, content, 'utf-8')
-    console.log(`[IngestionPipeline] sinal cerimônia gestor gravado: ${fileName}`)
+    this.log.info('sinal cerimônia gestor gravado', { fileName })
   }
 
   /**
@@ -494,6 +498,7 @@ export class IngestionPipeline {
     aiResult: IngestionAIResult,
     artifactText: string,
     claudeBinPath: string,
+    fallbackAcoes?: import('../prompts/ingestion.prompt').AcaoComprometida[],
   ): Promise<OneOnOneResult | null> {
     const registry = new PersonRegistry(this.workspacePath)
     const actionReg = new ActionRegistry(this.workspacePath)
@@ -534,14 +539,15 @@ export class IngestionPipeline {
 
     const artifactForDeep = artifactText
 
-    console.log(`[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT 1on1 prompt breakdown para "${slug}":`,
-      `artifact=${artifactText.length}chars`,
-      `perfil=${(perfilMdRaw ?? '').length}chars`,
-      `config=${configYaml.length}chars`,
-      `acoes=${openActionsLideradoStr.length + openActionsGestorStr.length}chars`,
-      `sinais=${sinaisTerceiros.length}chars`,
-      `historico=${historicoSaude.length}chars`,
-    )
+    this.log.debug('1on1 deep pass context', {
+      slug,
+      artifactChars: artifactText.length,
+      perfilChars: (perfilMdRaw ?? '').length,
+      configChars: configYaml.length,
+      acoesChars: openActionsLideradoStr.length + openActionsGestorStr.length,
+      sinaisChars: sinaisTerceiros.length,
+      historicoChars: historicoSaude.length,
+    })
 
     const prompt = build1on1DeepPrompt({
       artifactContent: artifactForDeep,
@@ -556,23 +562,30 @@ export class IngestionPipeline {
     })
 
     const release1on1 = await this.acquire1on1Slot()
-    console.log(`[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT pass 1on1 para "${slug}" (slot ${this.active1on1}/${MAX_CONCURRENT_1ON1})`)
+    this.log.debug('pass 1on1', { slug, slot: this.active1on1, maxSlots: MAX_CONCURRENT_1ON1 })
     let result: Awaited<ReturnType<typeof runClaudePrompt>>
     try {
       result = await runWithProvider('ingestionDeep1on1', settings, prompt, {
         claudeBinPath,
         claudeTimeoutMs: 300_000,
+        openRouterTimeoutMs: 120_000,
       })
     } finally {
       release1on1()
     }
 
-    console.log(`[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT pass 1on1 resultado para "${slug}": success=${result.success} hasData=${!!result.data} error=${result.error ?? 'none'} rawLen=${result.rawOutput?.length ?? 0}`)
+    this.log.debug('pass 1on1 resultado', { slug, success: result.success, hasData: !!result.data, error: result.error ?? 'none', rawLen: result.rawOutput?.length ?? 0 })
 
     if (!result.success || !result.data) {
-      console.warn(`[IngestionPipeline] pass 1on1 falhou para "${slug}": ${result.error ?? 'sem dados'}`)
+      this.log.warn('pass 1on1 falhou', { slug, error: result.error ?? 'sem dados' })
       if (result.rawOutput) {
-        console.warn(`[IngestionPipeline] pass 1on1 rawOutput (primeiros 500 chars):`, result.rawOutput.slice(0, 500))
+        this.log.warn('pass 1on1 rawOutput', { rawOutput: result.rawOutput.slice(0, 500) })
+      }
+      // Fallback: write Pass 1 actions so the person's profile isn't left without any actions
+      if (fallbackAcoes && fallbackAcoes.length > 0) {
+        const registeredSlugs = new Set(new PersonRegistry(this.workspacePath).list().map((p) => p.slug))
+        actionReg.createFromArtifact(slug, fallbackAcoes, `${aiResult.data_artefato}-${slug}.md`, aiResult.data_artefato, registeredSlugs)
+        this.log.warn('pass 1on1 fallback', { slug, acoesCount: fallbackAcoes.length })
       }
       return null
     }
@@ -583,8 +596,8 @@ export class IngestionPipeline {
         ...validation.missingFields.map((f) => `campo ausente: ${f}`),
         ...validation.typeErrors,
       ].join('; ')
-      console.warn(`[IngestionPipeline] schema inválido no pass 1on1 para "${slug}": ${details}`)
-      console.warn(`[IngestionPipeline] pass 1on1 keys recebidas:`, Object.keys(result.data as Record<string, unknown>))
+      this.log.warn('schema inválido no pass 1on1', { slug, details })
+      this.log.warn('pass 1on1 keys recebidas', { keys: Object.keys(result.data as Record<string, unknown>) })
       return null
     }
 
@@ -592,12 +605,12 @@ export class IngestionPipeline {
     const date = aiResult.data_artefato
     const artifactFileName = `${date}-${slug}.md`
 
-    console.log(
-      `[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT pass 1on1 concluído para "${slug}": ` +
-      `${oneOnOneResult.followup_acoes.length} followups, ` +
-      `${oneOnOneResult.acoes_liderado.length} ações liderado, ` +
-      `${oneOnOneResult.insights_1on1.length} insights`
-    )
+    this.log.info('pass 1on1 concluído', {
+      slug,
+      followups: oneOnOneResult.followup_acoes.length,
+      acoesLiderado: oneOnOneResult.acoes_liderado.length,
+      insights: oneOnOneResult.insights_1on1.length,
+    })
 
     // Apply side effects: update perfil, actions, demandas
     const release = await this.acquirePersonLock(slug)
@@ -639,7 +652,7 @@ export class IngestionPipeline {
             status:       'open',
           })
         }
-        console.log(`[IngestionPipeline] ${oneOnOneResult.acoes_gestor.length} ação(ões) do gestor → Demandas [1:1 ${personName}, origem=${origem}]`)
+        this.log.info('gestor actions → Demandas', { acoesCount: oneOnOneResult.acoes_gestor.length, personName, origem })
       }
     } finally {
       release()
@@ -668,7 +681,7 @@ export class IngestionPipeline {
     return match ? match[1].trim() : ''
   }
 
-  private async syncItemToPerson(item: QueueItem, slug: string): Promise<void> {
+  private async syncItemToPerson(item: QueueItem, slug: string, skipActions = false): Promise<void> {
     if (!item.cachedAiResult || !item.cachedText) return
 
     // Serialize per-person writes to prevent race conditions in parallel processing
@@ -676,7 +689,7 @@ export class IngestionPipeline {
     let totalArtefatos = 0
     try {
       const writer = new ArtifactWriter(this.workspacePath)
-      const artifactFileName = writer.writeArtifact(slug, item.cachedAiResult, item.cachedText)
+      const artifactFileName = writer.writeArtifact(slug, item.cachedAiResult, item.cachedText, undefined, skipActions)
       ;({ totalArtefatos } = writer.updatePerfil(slug, item.cachedAiResult, artifactFileName))
     } finally {
       release()
@@ -688,7 +701,7 @@ export class IngestionPipeline {
       if (settings.claudeBinPath) {
         new ProfileCompressor(this.workspacePath, settings)
           .compress(slug, totalArtefatos)
-          .catch((err) => console.warn(`[IngestionPipeline] compressão falhou para "${slug}":`, err))
+          .catch((err) => this.log.warn('compressão falhou', { slug, error: err instanceof Error ? err.message : String(err) }))
       }
     }
 
@@ -698,7 +711,7 @@ export class IngestionPipeline {
       const pessoa = registry.get(slug)
       new CicloRegistry(this.workspacePath).addFromIngestion(item.cachedAiResult, pessoa?.nome ?? null)
     } catch (err) {
-      console.warn('[IngestionPipeline] ciclo auto-populate falhou (não crítico):', err)
+      this.log.warn('ciclo auto-populate falhou', { error: err instanceof Error ? err.message : String(err) })
     }
 
     item.status         = 'done'
@@ -734,7 +747,7 @@ export class IngestionPipeline {
     const errors: string[] = []
     let processed = 0
 
-    console.log(`[IngestionPipeline] batch reingest: ${filePaths.length} arquivo(s)`)
+    this.log.info('batch reingest', { fileCount: filePaths.length })
 
     for (let i = 0; i < filePaths.length; i++) {
       const filePath = filePaths[i]
@@ -773,7 +786,7 @@ export class IngestionPipeline {
       }
     }
 
-    console.log(`[IngestionPipeline] batch reingest concluído: ${processed}/${filePaths.length} processados, ${errors.length} erro(s)`)
+    this.log.info('batch reingest concluído', { processed, total: filePaths.length, errors: errors.length })
 
     this.notifyRenderer('ingestion:batch-completed', {
       processed,
@@ -839,7 +852,7 @@ export class IngestionPipeline {
     const pendingPath = join(workspacePath, 'inbox', 'pending-queue.json')
     if (existsSync(pendingPath)) rmSync(pendingPath)
 
-    console.log(`[IngestionPipeline] reset data for ${resetList.length} people: ${resetList.join(', ')}`)
+    Logger.getInstance().child('IngestionPipeline').info('reset data', { count: resetList.length, slugs: resetList.join(', ') })
     return resetList
   }
 
@@ -904,8 +917,10 @@ export class IngestionPipeline {
   private fuzzyRemapSlugs(
     aiResult: IngestionAIResult,
     registeredPeople: Array<{ slug: string; nome: string }>,
+    managerSlug?: string,
   ): void {
     const registeredSlugs = new Set(registeredPeople.map((p) => p.slug))
+    const managerFirstName = managerSlug ? managerSlug.split('-')[0] : null
 
     // Build first-name → slug index (only keep unambiguous entries)
     const firstNameIndex = new Map<string, string | null>()
@@ -921,6 +936,9 @@ export class IngestionPipeline {
     function resolve(slug: string): string | null {
       if (registeredSlugs.has(slug)) return null // already registered, no remap needed
       const firstName = slug.split('-')[0]
+      // Never remap a slug whose first name matches the manager — they are the user,
+      // not a registered team member, so any match would route to the wrong person.
+      if (managerFirstName && firstName === managerFirstName) return null
       const match = firstNameIndex.get(firstName)
       return match ?? null // null if ambiguous or no match
     }
@@ -931,7 +949,7 @@ export class IngestionPipeline {
       const match = resolve(slug)
       if (match) {
         remapped.set(slug, match)
-        console.log(`[IngestionPipeline] fuzzy match: "${slug}" → "${match}"`)
+        this.log.info('fuzzy match', { from: slug, to: match })
         return match
       }
       return slug
@@ -943,7 +961,7 @@ export class IngestionPipeline {
     } else if (aiResult.pessoa_principal) {
       const match = resolve(aiResult.pessoa_principal)
       if (match) {
-        console.log(`[IngestionPipeline] fuzzy match (principal): "${aiResult.pessoa_principal}" → "${match}"`)
+        this.log.info('fuzzy match (principal)', { from: aiResult.pessoa_principal, to: match })
         aiResult.pessoa_principal = match
       }
     }
@@ -958,7 +976,7 @@ export class IngestionPipeline {
   private async processItem(item: QueueItem): Promise<void> {
     item.status    = 'processing'
     item.startedAt = Date.now()
-    console.log(`[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT processing: ${item.fileName}`)
+    this.log.info('processing', { fileName: item.fileName })
 
     try {
       const settings         = SettingsManager.load()
@@ -973,14 +991,15 @@ export class IngestionPipeline {
       // Reduz tokens enviados ao Claude limpando transcrições brutas
       const geminiActive = !!(settings.useGeminiPreprocessing && settings.googleAiApiKey)
       if (geminiActive) {
-        console.log(`[IngestionPipeline] Pass 0: Pré-processamento Gemini ativo`)
+        this.log.debug('Pass 0: Pré-processamento Gemini ativo')
         const preprocessResult = await preprocessTranscript(settings.googleAiApiKey!, text, 90_000, item.fileName)
         if (preprocessResult.success) {
           text = preprocessResult.cleanedText
-          console.log(
-            `[IngestionPipeline] Pass 0: Transcript reduzido de ${preprocessResult.originalLength} ` +
-            `para ${preprocessResult.cleanedLength} chars (${preprocessResult.reductionPercent.toFixed(1)}% economia)`
-          )
+          this.log.debug('Pass 0: transcript reduction', {
+            originalLength: preprocessResult.originalLength,
+            cleanedLength: preprocessResult.cleanedLength,
+            economy: preprocessResult.reductionPercent.toFixed(1) + '%',
+          })
         } else {
           const isTimeout = preprocessResult.error?.includes('Timeout')
           const hint = isTimeout
@@ -1037,7 +1056,7 @@ export class IngestionPipeline {
       if (principalPass1 && registry.get(principalPass1)) {
         const perfil = registry.getPerfil(principalPass1)
         if (perfil && shouldRunPass2(perfil.frontmatter, text.length, principalPass1)) {
-          console.log(`[IngestionPipeline] pass 2 com perfil de "${principalPass1}"`)
+          this.log.debug('pass 2 with profile', { slug: principalPass1 })
           const promptPass2 = buildIngestionPrompt({
             teamRegistry,
             perfilMdRaw: perfil.raw,
@@ -1049,6 +1068,7 @@ export class IngestionPipeline {
           const resultPass2 = await runWithProvider('ingestionPass2', settings, promptPass2, {
             claudeBinPath: settings.claudeBinPath,
             claudeTimeoutMs: 180_000,
+            openRouterTimeoutMs: 90_000,
           })
           if (resultPass2.success && resultPass2.data) {
             const validation2 = validateIngestionResult(resultPass2.data)
@@ -1056,12 +1076,10 @@ export class IngestionPipeline {
               aiResult = resultPass2.data as IngestionAIResult
             } else {
               const details = [...validation2.missingFields.map(f => `campo ausente: ${f}`), ...validation2.typeErrors].join('; ')
-              console.warn(`[IngestionPipeline] schema inválido no pass 2, mantendo pass 1: ${details}`)
+              this.log.warn('schema inválido no pass 2, mantendo pass 1', { details })
             }
           } else {
-            console.warn(
-              `[IngestionPipeline] pass 2 falhou (${resultPass2.error ?? 'sem dados'}), usando resultado do pass 1 para "${principalPass1}"`
-            )
+            this.log.warn('pass 2 falhou, usando pass 1', { slug: principalPass1, error: resultPass2.error ?? 'sem dados' })
           }
         }
       }
@@ -1069,7 +1087,8 @@ export class IngestionPipeline {
       // Fuzzy-match: remap AI-generated slugs to registered people by first name
       // when the slug doesn't match exactly but the first name is unambiguous
       const registeredPeople = registry.list()
-      this.fuzzyRemapSlugs(aiResult, registeredPeople)
+      const managerSlugForRemap = (settings.managerName ?? '').trim().toLowerCase().replace(/\s+/g, '-') || undefined
+      this.fuzzyRemapSlugs(aiResult, registeredPeople, managerSlugForRemap)
 
       // Identify which people are registered vs unknown
       const pessoasIdentificadas = aiResult.pessoas_identificadas ?? []
@@ -1115,18 +1134,39 @@ export class IngestionPipeline {
         const capturedAiResult = aiResult
         const capturedText = text
 
-        await this.syncItemToPerson(item, principal)
-        console.log(`[IngestionPipeline] ${new Date().toTimeString().slice(0, 8)} GMT done: ${item.fileName} → ${principal}`)
+        // Force 1:1 BEFORE sync so skipActions is correct
+        const titulo = capturedAiResult.titulo ?? ''
+        const fileName = item.fileName ?? ''
+        const is1on1Pattern = /\b(1[:\s]?1|1on1|one-on-one|1-o-1)\b/i.test(titulo) ||
+          /^[\w\s]+\s*[\/\-\_]\s*[\w\s]+$/.test(titulo.trim()) ||
+          /\b(1[:\s]?1|1on1|one-on-one|1-o-1)\b/i.test(fileName) ||
+          /^[\w\s]+\s*[\/\-\_]\s*[\w\s]+$/.test(fileName.replace(/\d{4}[_\-]\d{2}[_\-]\d{2}.*/, '').trim())
+        if (is1on1Pattern && capturedAiResult.tipo !== '1on1') {
+          capturedAiResult.tipo = '1on1'
+          this.log.warn('tipo forçado para 1on1', { fileName: item.fileName, titulo })
+        }
+
+        // For 1:1s, skip Pass 1 actions — the 1:1 deep pass creates them with better quality
+        const is1on1 = capturedAiResult.tipo === '1on1'
+        await this.syncItemToPerson(item, principal, is1on1)
+        this.log.info('done', { fileName: item.fileName, slug: principal, elapsed: item.startedAt ? Date.now() - item.startedAt : undefined })
+
+        // ExternalDataPass: fetch Jira/GitHub metrics (fire-and-forget, graceful degradation)
+        new ExternalDataPass(this.workspacePath)
+          .run(principal)
+          .catch((err) => this.log.warn('external data pass falhou', { slug: principal, error: err instanceof Error ? err.message : String(err) }))
 
         // Pass 1on1: deep analysis for 1:1 artifacts (fire-and-forget)
-        if (capturedAiResult.tipo === '1on1' && settings.claudeBinPath) {
-          this.run1on1DeepPass(principal, capturedAiResult, capturedText, settings.claudeBinPath)
-            .catch((err) => console.warn('[IngestionPipeline] pass 1on1 falhou:', err))
+        // Pass fallbackAcoes so if deep pass fails, Pass 1 actions are written as safety net
+        if (is1on1 && settings.claudeBinPath) {
+          const fallbackAcoes = capturedAiResult.acoes_comprometidas
+          this.run1on1DeepPass(principal, capturedAiResult, capturedText, settings.claudeBinPath, fallbackAcoes)
+            .catch((err) => this.log.warn('pass 1on1 falhou', { error: err instanceof Error ? err.message : String(err) }))
         }
       } else if (!principal) {
         // Reunião coletiva: sem pessoa_principal → salva em _coletivo + sinais por pessoa (async)
         this.syncItemToCollective(item, settings.claudeBinPath)
-        console.log(`[IngestionPipeline] done (coletivo): ${item.fileName}`)
+        this.log.info('done (coletivo)', { fileName: item.fileName })
       } else {
         // pessoa_principal identificada mas não cadastrada → pending
         item.status = 'pending'
@@ -1135,7 +1175,7 @@ export class IngestionPipeline {
           filePath: item.filePath, personSlug: undefined,
           tipo: item.tipo, summary: item.summary, novas,
         })
-        console.log(`[IngestionPipeline] pending: ${item.fileName} → pessoa "${principal}" não cadastrada`)
+        this.log.info('pending', { fileName: item.fileName, principal })
       }
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : String(err)
@@ -1148,7 +1188,7 @@ export class IngestionPipeline {
         error,
       })
 
-      console.error(`[IngestionPipeline] error: ${item.fileName} —`, error)
+      this.log.error('error', { fileName: item.fileName, error })
     }
   }
 
@@ -1166,9 +1206,9 @@ export class IngestionPipeline {
     const dest = pathJoin(processadosDir, basename(normalizedPath))
     try {
       renameSync(normalizedPath, dest)
-      console.log(`[IngestionPipeline] moved to processados: ${basename(normalizedPath)}`)
+      this.log.info('moved to processados', { fileName: basename(normalizedPath) })
     } catch (err) {
-      console.error(`[IngestionPipeline] failed to move file:`, err)
+      this.log.error('failed to move file', { error: err instanceof Error ? err.message : String(err) })
     }
   }
 

@@ -1,4 +1,4 @@
-import type { AppSettings, PersonConfig, ArtifactMeta, ArtifactFeedItem, PerfilData, QueueItem, CycleReportParams, DetectedPerson, PautaMeta, Action, ActionStatus, DocItem } from './ipc'
+import type { AppSettings, PersonConfig, ArtifactMeta, ArtifactFeedItem, PerfilData, QueueItem, CycleReportParams, DetectedPerson, PautaMeta, Action, ActionStatus, DocItem, LogLevel, LogEntry } from './ipc'
 
 declare global {
   interface Window {
@@ -37,6 +37,7 @@ declare global {
         enqueue:         (filePath: string) => Promise<void>
         listProcessados: () => Promise<string[]>
         resetData:       () => Promise<void>
+        resetPersonData: (slug: string) => Promise<boolean>
         batchReingest:   (files: string[]) => Promise<{ processed: number; errors: string[] }>
       }
 
@@ -58,6 +59,18 @@ declare global {
         delete:       (slug: string, id: string) => Promise<void>
       }
 
+      eu: {
+        listDemandas:        () => Promise<unknown[]>
+        saveDemanda:         (data: unknown) => Promise<void>
+        deleteDemanda:       (id: string) => Promise<void>
+        updateDemandaStatus: (id: string, status: string, addToCiclo: boolean) => Promise<void>
+        listCiclo:           () => Promise<unknown[]>
+        addManualEntry:      (texto: string) => Promise<void>
+        deleteCicloEntry:    (id: string) => Promise<void>
+        ingestArtifact:      (filePath: string) => Promise<void>
+        gerarAutoavaliacao:  (params: unknown) => Promise<unknown>
+      }
+
       shell: {
         open: (filePath: string) => Promise<void>
       }
@@ -74,6 +87,23 @@ declare global {
         save:   (srcPath: string) => Promise<string>
         read:   (filePath: string) => Promise<string>
         delete: (filePath: string) => Promise<void>
+      }
+
+      logs: {
+        write:     (level: LogLevel, module: string, msg: string, data?: unknown) => Promise<void>
+        recent:    (opts?: { limit?: number; level?: LogLevel; module?: string }) => Promise<LogEntry[]>
+        files:     () => Promise<Array<{ name: string; size: number; date: string }>>
+        readFile:  (name: string) => Promise<string>
+        onEntry:   (cb: (entry: LogEntry) => void) => void
+        removeListeners: () => void
+      }
+
+      external: {
+        refreshDaily:   () => Promise<string>
+        refreshSprint:  () => Promise<string | null>
+        getData:        (slug: string) => Promise<string | null>
+        listReports:    () => Promise<Array<{ name: string; date: string; size: number }>>
+        getReport:      (path: string) => Promise<string>
       }
     }
   }

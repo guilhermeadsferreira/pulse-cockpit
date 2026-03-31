@@ -18,6 +18,12 @@ import { buildCyclePrompt, renderCycleMarkdown, type CycleAIResult } from './pro
 import { buildGestorCicloPrompt, renderGestorCicloMarkdown, type GestorCicloAIResult } from './prompts/gestor-ciclo.prompt'
 import { buildAutoavaliacaoPrompt, renderAutoavaliacaoMarkdown, type AutoavaliacaoAIResult } from './prompts/autoavaliacao.prompt'
 import type { CycleReportParams, AutoavaliacaoParams, DemandaStatus } from '../renderer/src/types/ipc'
+import { Logger, type LogLevel } from './logging'
+import { Scheduler } from './external/Scheduler'
+
+const APP_ICON = app.isPackaged
+  ? join(process.resourcesPath, 'Logo.png')
+  : join(__dirname, '../../Logo.png')
 
 let mainWindow: BrowserWindow | null = null
 let fileWatcher:  FileWatcher  | null = null
@@ -36,6 +42,7 @@ function createWindow(): void {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: '#0B0D11',
+    icon: APP_ICON,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -55,6 +62,24 @@ function createWindow(): void {
 function registerIpcHandlers(): void {
   // ── Debug ─────────────────────────────────────────────────
   ipcMain.handle('ipc:ping', () => ({ ok: true, ts: Date.now() }))
+
+  // ── Logging ───────────────────────────────────────────────
+  ipcMain.handle('log:write', (_event, level: LogLevel, module: string, message: string, data?: Record<string, unknown>) => {
+    const child = Logger.getInstance().child(module)
+    child[level](message, data) as unknown as void
+  })
+
+  ipcMain.handle('log:recent', (_event, opts?: { limit?: number; level?: LogLevel; module?: string }) => {
+    return Logger.getInstance().getRecentLogs(opts?.limit, opts?.level, opts?.module)
+  })
+
+  ipcMain.handle('log:files', () => {
+    return Logger.getInstance().getLogFiles()
+  })
+
+  ipcMain.handle('log:read-file', (_event, fileName: string) => {
+    return Logger.getInstance().readLogFile(fileName)
+  })
 
   // ── Settings ──────────────────────────────────────────────
   ipcMain.handle('settings:load', () => SettingsManager.load())
@@ -98,7 +123,7 @@ function registerIpcHandlers(): void {
     // Always try to sync pending inbox items (person may have been registered after processing)
     if (fileWatcher) {
       const count = await fileWatcher.reprocessPending(config.slug)
-      if (count > 0) console.log(`[people:save] synced ${count} pending item(s) for "${config.slug}"`)
+      if (count > 0) Logger.getInstance().child('IPC').info('pending synced', { slug: config.slug, count })
     }
   })
 
@@ -178,6 +203,38 @@ function registerIpcHandlers(): void {
     return FileWatcher.resetGeneratedData(workspacePath)
   })
 
+  ipcMain.handle('ingestion:reset-person-data', (_event, slug: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const { existsSync, rmSync, mkdirSync, readdirSync } = require('fs')
+    const { join } = require('path')
+
+    const personDir = join(workspacePath, 'pessoas', slug)
+    if (!existsSync(personDir)) return false
+
+    const perfilPath = join(personDir, 'perfil.md')
+    if (existsSync(perfilPath)) rmSync(perfilPath)
+    const bakPath = perfilPath + '.bak'
+    if (existsSync(bakPath)) rmSync(bakPath)
+
+    const actionsPath = join(personDir, 'actions.yaml')
+    if (existsSync(actionsPath)) rmSync(actionsPath)
+
+    const historicoDir = join(personDir, 'historico')
+    if (existsSync(historicoDir)) {
+      rmSync(historicoDir, { recursive: true })
+      mkdirSync(historicoDir, { recursive: true })
+    }
+
+    const pautasDir = join(personDir, 'pautas')
+    if (existsSync(pautasDir)) {
+      rmSync(pautasDir, { recursive: true })
+      mkdirSync(pautasDir, { recursive: true })
+    }
+
+    Logger.getInstance().child('IPC').warn('person data reset', { slug })
+    return true
+  })
+
   ipcMain.handle('ingestion:list-processados', () => {
     const { workspacePath } = SettingsManager.load()
     const processadosDir = require('path').join(workspacePath, 'inbox', 'processados')
@@ -191,9 +248,10 @@ function registerIpcHandlers(): void {
 
   // ── AI ────────────────────────────────────────────────────
   ipcMain.handle('ai:test', async () => {
-    console.log('[ai:test] handler chamado')
+    const log = Logger.getInstance().child('IPC')
+    log.debug('ai:test handler called')
     const settings = SettingsManager.load()
-    console.log('[ai:test] claudeBinPath:', settings.claudeBinPath)
+    log.debug('ai:test claudeBinPath', { claudeBinPath: settings.claudeBinPath || '(empty)' })
     if (!settings.claudeBinPath) {
       return { success: false, error: 'Claude CLI não configurado. Configure o caminho em Settings.' }
     }
@@ -240,6 +298,7 @@ function registerIpcHandlers(): void {
       const result = await runWithProvider('agendaGeneration', settings, prompt, {
         claudeBinPath: settings.claudeBinPath,
         claudeTimeoutMs: 90_000,
+        openRouterTimeoutMs: 90_000,
       })
       if (!result.success || !result.data) {
         return { success: false, error: result.error || 'Falha ao gerar pauta.' }
@@ -281,10 +340,15 @@ function registerIpcHandlers(): void {
       const pdiMatch = configRaw.match(/pdi:\n([\s\S]*?)(?=\n\w|\n$|$)/)
       const pdiEstruturado = pdiMatch?.[1]?.trim() || ''
 
-      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado })
+      // Extract Dados Externos section from perfil.md
+      const externalMatch = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+      const externalData = externalMatch?.[1]?.trim() || ''
+
+      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData })
       const result = await runWithProvider('agendaGeneration', settings, prompt, {
         claudeBinPath: settings.claudeBinPath,
         claudeTimeoutMs: 90_000,
+        openRouterTimeoutMs: 90_000,
       })
       if (!result.success || !result.data) {
         return { success: false, error: result.error || 'Falha ao gerar pauta.' }
@@ -342,18 +406,23 @@ function registerIpcHandlers(): void {
     const pdiMatch = configRaw.match(/pdi:\n([\s\S]*?)(?=\n\w|\n$|$)/)
     const pdiEvolucao = pdiMatch?.[1]?.trim() || ''
 
+    // Extract Dados Externos section from perfil.md
+    const externalMatchCycle = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+    const externalData = externalMatchCycle?.[1]?.trim() || ''
+
     const { prompt, truncatedArtifacts, totalArtifacts } = buildCyclePrompt({
       configYaml: configRaw, perfilMd: perfilData.raw, artifacts, periodoInicio, periodoFim,
-      insights1on1, correlacoes, followupHistorico, tendenciaEmocional, pdiEvolucao,
+      insights1on1, correlacoes, followupHistorico, tendenciaEmocional, pdiEvolucao, externalData,
     })
 
     if (truncatedArtifacts > 0) {
-      console.warn(`[ai:cycle-report] contexto limitado: ${totalArtifacts - truncatedArtifacts}/${totalArtifacts} artefatos incluídos para "${personSlug}"`)
+      Logger.getInstance().child('IPC').warn('cycle report context truncated', { truncated: totalArtifacts - truncatedArtifacts, total: totalArtifacts, personSlug })
     }
 
     const result = await runWithProvider('cycleReport', settings, prompt, {
       claudeBinPath: settings.claudeBinPath,
       claudeTimeoutMs: 120_000,
+      openRouterTimeoutMs: 120_000,
     })
     if (!result.success || !result.data) {
       return { success: false, error: result.error || 'Falha ao gerar relatório de ciclo.' }
@@ -452,6 +521,7 @@ function registerIpcHandlers(): void {
       const result = await runWithProvider('autoAvaliacao', settings, prompt, {
         claudeBinPath: settings.claudeBinPath,
         claudeTimeoutMs: 90_000,
+        openRouterTimeoutMs: 90_000,
       })
       if (!result.success || !result.data) {
         return { success: false, error: result.error || 'Falha na ingestão do artefato.' }
@@ -505,6 +575,7 @@ function registerIpcHandlers(): void {
       const result = await runWithProvider('autoAvaliacao', settings, prompt, {
         claudeBinPath: settings.claudeBinPath,
         claudeTimeoutMs: 120_000,
+        openRouterTimeoutMs: 120_000,
       })
       if (!result.success || !result.data) {
         return { success: false, error: result.error || 'Falha ao gerar autoavaliação.' }
@@ -576,6 +647,58 @@ function registerIpcHandlers(): void {
   ipcMain.handle('refinamentos:delete', (_event, filePath: string) => {
     if (existsSync(filePath)) unlinkSync(filePath)
   })
+
+  // ── External Intelligence ─────────────────────────────────
+  ipcMain.handle('external:refresh-daily', async () => {
+    const { workspacePath } = SettingsManager.load()
+    const scheduler = new Scheduler(workspacePath)
+    return scheduler.generateDailyReport()
+  })
+
+  ipcMain.handle('external:refresh-sprint', async () => {
+    const { workspacePath } = SettingsManager.load()
+    const scheduler = new Scheduler(workspacePath)
+    return scheduler.generateSprintReport()
+  })
+
+  ipcMain.handle('external:get-data', async (_event, slug: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const yamlPath = join(workspacePath, 'pessoas', slug, 'external_data.yaml')
+    if (!existsSync(yamlPath)) return null
+    try {
+      return readFileSync(yamlPath, 'utf-8')
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('external:list-reports', () => {
+    const { workspacePath } = SettingsManager.load()
+    const reportsDir = join(workspacePath, 'relatorios')
+    if (!existsSync(reportsDir)) return []
+    try {
+      return readdirSync(reportsDir)
+        .filter(f => f.endsWith('.md'))
+        .map(f => {
+          const stat = require('fs').statSync(join(reportsDir, f))
+          return { name: f, date: stat.mtime.toISOString().slice(0, 10), size: stat.size }
+        })
+        .sort((a, b) => b.date.localeCompare(a.date))
+    } catch {
+      return []
+    }
+  })
+
+  ipcMain.handle('external:get-report', (_event, reportPath: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const fullPath = join(workspacePath, 'relatorios', reportPath)
+    if (!existsSync(fullPath)) return ''
+    try {
+      return readFileSync(fullPath, 'utf-8')
+    } catch {
+      return ''
+    }
+  })
 }
 
 // Persiste o último status para enviar ao renderer quando ele montar após os eventos
@@ -617,7 +740,7 @@ function setupAutoUpdater(): void {
   })
 
   autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater]', err.message)
+    Logger.getInstance().child('AutoUpdater').error('update error', { error: err.message })
     logUpdaterError(err)
     sendUpdateStatus({ phase: 'error', error: err.message })
   })
@@ -626,8 +749,17 @@ function setupAutoUpdater(): void {
 }
 
 app.whenReady().then(async () => {
+  // Set Dock icon on macOS (BrowserWindow.icon doesn't affect the Dock)
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(APP_ICON)
+  }
+
   const settings = SettingsManager.load()
   await setupWorkspace(settings.workspacePath)
+
+  Logger.getInstance().initFromSettings()
+  Logger.getInstance().setMainWindowGetter(() => mainWindow)
+
   registerIpcHandlers()
   createWindow()
 
@@ -636,6 +768,12 @@ app.whenReady().then(async () => {
   fileWatcher.start()
   fileWatcher.restorePending() // restore items pending from previous session
   fileWatcher.syncAllPending() // sync pending items whose persons are now registered
+
+  // Scheduler: daily report + sprint change detection
+  const scheduler = new Scheduler(settings.workspacePath)
+  scheduler.onAppStart().catch((err) => {
+    Logger.getInstance().child('Scheduler').warn('onAppStart falhou', { error: err instanceof Error ? err.message : String(err) })
+  })
 
   setupAutoUpdater()
 

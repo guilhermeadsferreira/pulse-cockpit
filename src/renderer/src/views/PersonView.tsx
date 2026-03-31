@@ -5,6 +5,7 @@ import type { PersonConfig, PerfilData, ArtifactMeta, PautaMeta, AgendaResult, A
 import { MarkdownPreview } from '../components/MarkdownPreview'
 import { labelNivel, labelRelacao, labelSaude, labelTipo, fmtDate as fmtDateUtil } from '../lib/utils'
 import { CycleTab } from './CycleReportView'
+import { ExternalDataCard } from '../components/ExternalDataCard'
 
 // Styles declared at module top level so all sub-components can access them safely
 const styles = {
@@ -32,6 +33,13 @@ const styles = {
     border: '1px solid var(--border)',
     fontSize: 13, fontFamily: 'var(--font)', fontWeight: 500, cursor: 'pointer',
   } as React.CSSProperties,
+  btnDanger: {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '7px 12px', borderRadius: 6,
+    background: 'transparent', color: '#ef4444',
+    border: '1px solid #3f3f46',
+    fontSize: 13, fontFamily: 'var(--font)', fontWeight: 500, cursor: 'pointer',
+  } as React.CSSProperties,
   btnIcon: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: 28, height: 28, borderRadius: 6,
@@ -57,6 +65,20 @@ export function PersonView() {
   const [actions,       setActions]       = useState<Action[]>([])
   const [generatingAgenda, setGeneratingAgenda] = useState(false)
   const [agendaError,   setAgendaError]   = useState<string | null>(null)
+  const [resetting,     setResetting]     = useState(false)
+
+  async function handleResetData() {
+    if (!person) return
+    if (!confirm(`Limpar todos os dados gerados de "${person.nome}"?\n\nIsso remove: perfil.md, ações, histórico e pautas. O cadastro da pessoa é preservado.`)) return
+    setResetting(true)
+    try {
+      await window.api.ingestion.resetPersonData(person.slug)
+      await loadPerfil(person.slug)
+      setActiveTab('perfil')
+    } finally {
+      setResetting(false)
+    }
+  }
 
   const loadPerfil = useCallback(async (slug: string) => {
     const [p, a] = await Promise.all([
@@ -169,6 +191,15 @@ export function PersonView() {
           >
             <FileText size={12} /> Relatório de Ciclo
           </button>
+          <button
+            onClick={handleResetData}
+            disabled={resetting}
+            style={styles.btnDanger}
+            title="Limpar dados gerados (perfil, ações, histórico, pautas)"
+          >
+            {resetting ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
+            {resetting ? 'Limpando…' : 'Limpar dados'}
+          </button>
         </div>
       </div>
 
@@ -221,6 +252,10 @@ export function PersonView() {
                     {person.notas_manuais}
                   </p>
                 </InfoCard>
+              )}
+
+              {(person.jiraEmail || person.githubUsername) && (
+                <ExternalDataCard slug={person.slug} />
               )}
             </div>
 
@@ -290,7 +325,7 @@ export function PersonView() {
                       await window.api.actions.updateStatus(person.slug, id, status)
                       loadActions(person.slug)
                     } catch (err) {
-                      console.error('[PersonView] updateStatus falhou:', err, { slug: person.slug, id, status })
+                      window.api.logs.write('error', 'PersonView', 'updateStatus failed', { slug: person.slug, id, status })
                     }
                   }}
                   onDelete={async (id) => {
@@ -298,7 +333,7 @@ export function PersonView() {
                       await window.api.actions.delete(person.slug, id)
                       loadActions(person.slug)
                     } catch (err) {
-                      console.error('[PersonView] delete falhou:', err, { slug: person.slug, id })
+                      window.api.logs.write('error', 'PersonView', 'delete failed', { slug: person.slug, id })
                     }
                   }}
                   onSaveAction={async (action) => {

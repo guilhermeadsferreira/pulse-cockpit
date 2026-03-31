@@ -1,0 +1,187 @@
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { PersonRegistry } from '../registry/PersonRegistry'
+import { ExternalDataPass, type ExternalDataSnapshot } from './ExternalDataPass'
+import type { JiraSprint } from './JiraClient'
+import type { JiraPersonMetrics, SprintSummary } from './JiraMetrics'
+import type { GitHubPersonMetrics } from './GitHubMetrics'
+import { Logger } from '../logging/Logger'
+
+const log = Logger.getInstance().child('SprintReportGenerator')
+
+interface PersonSprintData {
+  nome: string
+  slug: string
+  snapshot: ExternalDataSnapshot | null
+}
+
+export class SprintReportGenerator {
+  private workspacePath: string
+  private relatoriosDir: string
+  private externalPass: ExternalDataPass
+
+  constructor(workspacePath: string) {
+    this.workspacePath = workspacePath
+    this.relatoriosDir = join(workspacePath, 'relatorios')
+    this.externalPass = new ExternalDataPass(workspacePath)
+  }
+
+  async generate(sprint: JiraSprint): Promise<string> {
+    const safeName = sprint.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').replace(/\s+/g, '-')
+    const filePath = join(this.relatoriosDir, `sprint_${safeName}.md`)
+
+    if (existsSync(filePath)) {
+      log.debug('sprint report já existe', { sprint: sprint.name })
+      return filePath
+    }
+
+    const registry = new PersonRegistry(this.workspacePath)
+    const people = registry.list().filter(p => p.relacao === 'liderado')
+
+    const personData: PersonSprintData[] = []
+
+    for (const person of people) {
+      if (!person.jiraEmail && !person.githubUsername) continue
+
+      let snapshot: ExternalDataSnapshot | null = null
+      try {
+        snapshot = await this.externalPass.run(person.slug)
+      } catch (err) {
+        log.warn('falha ao buscar dados para sprint report', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+      }
+
+      personData.push({
+        nome: person.nome,
+        slug: person.slug,
+        snapshot,
+      })
+
+      await sleep(200)
+    }
+
+    const content = this.buildReport(sprint, personData)
+
+    mkdirSync(this.relatoriosDir, { recursive: true })
+    writeFileSync(filePath, content, 'utf-8')
+    log.info('sprint report gerado', { sprint: sprint.name, path: filePath })
+    return filePath
+  }
+
+  private buildReport(sprint: JiraSprint, personData: PersonSprintData[]): string {
+    const lines: string[] = [
+      `# Sprint Report — "${sprint.name}"`,
+      `**Período:** ${sprint.startDate ?? '?'} → ${sprint.endDate ?? '?'}`,
+      '',
+    ]
+
+    // Aggregate
+    let totalComprometido = 0
+    let totalEntregue = 0
+    let totalIssues = 0
+    let totalIssuesDone = 0
+
+    const tableRows: Array<{
+      nome: string
+      issues: number
+      sp: number
+      prs: number
+      commits: number
+      status: string
+    }> = []
+
+    const allBlockers: string[] = []
+    const allInsights: string[] = []
+
+    for (const person of personData) {
+      const jira = person.snapshot?.jira
+      const github = person.snapshot?.github
+
+      const sprintData = jira?.sprintAtual
+      const issues = sprintData?.totalIssues ?? 0
+      const issuesDone = sprintData?.issuesConcluidas ?? 0
+      const sp = sprintData?.comprometido ?? 0
+      const spDelivered = sprintData?.entregue ?? 0
+      const prs = github?.prsMerged30d ?? 0
+      const commits = github?.commits30d ?? 0
+
+      let status = '🟢'
+      if (jira && jira.blockersAtivos.length > 0) status = '🟡 blocker'
+      else if (jira?.workloadScore === 'alto') status = '🟡 overload'
+      else if (github && github.commits30d === 0 && issues > 0) status = '🔴 baixa atividade'
+
+      totalComprometido += sp
+      totalEntregue += spDelivered
+      totalIssues += issues
+      totalIssuesDone += issuesDone
+
+      tableRows.push({
+        nome: person.nome,
+        issues,
+        sp,
+        prs,
+        commits,
+        status,
+      })
+
+      // Blockers
+      if (jira) {
+        for (const b of jira.blockersAtivos) {
+          const days = Math.floor((Date.now() - new Date(b.blockedSince).getTime()) / 86_400_000)
+          allBlockers.push(`- ${b.key}: "${b.summary}" (${person.nome}) — ${days} dias`)
+        }
+      }
+
+      // Insights
+      if (person.snapshot) {
+        for (const insight of person.snapshot.insights) {
+          if (insight.severidade === 'alta' || insight.severidade === 'media') {
+            const icon = insight.severidade === 'alta' ? '⚠️' : '🔶'
+            allInsights.push(`- ${icon} ${person.nome}: ${insight.descricao}`)
+          }
+        }
+      }
+    }
+
+    // Summary section
+    lines.push('## Resumo', '')
+    lines.push(`- Comprometido: ${totalComprometido} SP (${totalIssues} issues) | Entregue: ${totalEntregue} SP (${totalIssuesDone} issues)`)
+    if (totalIssues > 0) {
+      const pct = Math.round((totalIssuesDone / totalIssues) * 100)
+      lines.push(`- Conclusão: ${pct}%`)
+    }
+    lines.push('')
+
+    // Per-person table
+    lines.push('## Por Pessoa', '')
+    lines.push('| Pessoa | Issues | SP | PRs | Commits | Status |')
+    lines.push('|--------|--------|----|----|---------|--------|')
+    for (const row of tableRows) {
+      lines.push(`| ${row.nome} | ${row.issues} | ${row.sp} | ${row.prs} | ${row.commits} | ${row.status} |`)
+    }
+    lines.push('')
+
+    // Blockers
+    if (allBlockers.length > 0) {
+      lines.push('## Blockers Encontrados', '')
+      for (const b of allBlockers) {
+        lines.push(b)
+      }
+      lines.push('')
+    }
+
+    // Insights
+    if (allInsights.length > 0) {
+      lines.push('## Insights', '')
+      for (const i of allInsights) {
+        lines.push(i)
+      }
+      lines.push('')
+    }
+
+    return lines.join('\n')
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}

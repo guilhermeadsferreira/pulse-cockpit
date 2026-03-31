@@ -18,10 +18,11 @@ export interface AgendaPromptParams {
   insightsRecentes?: string
   sinaisTerceiros?:  string
   pdiEstruturado?:   string
+  externalData?:     string
 }
 
 export function buildAgendaPrompt(params: AgendaPromptParams): string {
-  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '' } = params
+  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '' } = params
 
   const pautasSection = pautasAnteriores.length > 0
     ? `\n## Histórico de pautas anteriores\n${pautasAnteriores.map(p => `### Pauta de ${p.date}\n${p.content}`).join('\n\n')}\n`
@@ -65,6 +66,10 @@ export function buildAgendaPrompt(params: AgendaPromptParams): string {
     ? `\n## PDI atual\n${pdiEstruturado}\n`
     : ''
 
+  const externalDataSection = externalData
+    ? `\n## Dados Externos (métricas objetivas)\n${externalData}\n`
+    : ''
+
   const staleWarning = dadosStale
     ? `\n⚠️ ATENÇÃO: O perfil desta pessoa não recebe novos artefatos há mais de 30 dias. Os dados podem estar desatualizados. Não gere alertas baseados em inferências do perfil — retorne "alertas" como array vazio e indique na seção "temas" que o gestor deve atualizar o contexto antes do 1:1.\n`
     : ''
@@ -81,7 +86,7 @@ ${configYaml}
 
 ## Perfil vivo atual
 ${perfilMd}
-${pautasSection}${acoesSection}${insightsSection}${sinaisSection}${pdiSection}
+${pautasSection}${acoesSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
 ## Sua tarefa
 
 Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais de terceiros e PDI, gere uma pauta completa e estruturada para o próximo 1:1. Retorne APENAS um JSON válido (sem texto antes ou depois):
@@ -97,8 +102,8 @@ Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais
 Regras:
 - "follow_ups": use DESCRIÇÃO COMPLETA e CONTEXTO das ações, não só texto resumido. Ações com risco de abandono (2+ ciclos sem menção) são PRIORIDADE MÁXIMA — devem ser os primeiros itens. Ações do gestor pendentes vão em seção separada como "prestar contas". Priorize as mais antigas.
 - "temas": assuntos recorrentes, pontos de atenção ou evolução de carreira que merecem discussão aprofundada. Conecte insights de 1:1 sobre carreira/PDI com perguntas sugeridas quando aplicável. Priorize pelo impacto.
-- "perguntas_sugeridas": 4 a 6 perguntas abertas, específicas e contextualizadas para esta pessoa. Sinais de terceiros não explorados devem gerar perguntas de validação (ex: "O Antonio mencionou X — como você vê isso?"). Insights de PDI conectam com perguntas de desenvolvimento. NUNCA use perguntas genéricas — baseie-se no perfil real.
-- "alertas": pontos críticos que o gestor DEVE abordar (bloqueios, conflitos, risco de desengajamento, deadlines críticos, ações com risco de abandono). Array vazio se não houver urgências.
+- "perguntas_sugeridas": 4 a 6 perguntas abertas, específicas e contextualizadas para esta pessoa. Sinais de terceiros não explorados devem gerar perguntas de validação (ex: "O Antonio mencionou X — como você vê isso?"). Insights de PDI conectam com perguntas de desenvolvimento. NUNCA use perguntas genéricas — baseie-se no perfil real. Use dados externos quantitativos (Jira, GitHub) para gerar perguntas com números concretos — ex: "Você tem ${openActions.length} ações abertas e 5 issues no Jira — como está gerenciando o workload?".
+- "alertas": pontos críticos que o gestor DEVE abordar (bloqueios, conflitos, risco de desengajamento, deadlines críticos, ações com risco de abandono, blockers do Jira). Array vazio se não houver urgências.
 - "reconhecimentos": conquistas e elogios recentes que merecem ser reconhecidos explicitamente na conversa. Reconhecimento público fortalece o vínculo. Array vazio se não houver.`
 }
 

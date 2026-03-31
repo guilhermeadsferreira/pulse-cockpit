@@ -11,6 +11,8 @@ export type ViewName =
   | 'settings'
   | 'eu'
   | 'refinamentos'
+  | 'logs'
+  | 'reports'
 
 interface RouterEntry {
   view: ViewName

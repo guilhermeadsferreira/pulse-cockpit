@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Grid2X2, Inbox, Settings, Users, UserCheck, ScrollText, User, BookOpen } from 'lucide-react'
+import { Grid2X2, Inbox, Settings, Users, UserCheck, ScrollText, User, BookOpen, Terminal, BarChart3 } from 'lucide-react'
 import { useRouter, type ViewName } from '../router'
 import type { Demanda } from '../types/ipc'
 
@@ -53,7 +53,9 @@ export function Sidebar() {
     { id: 'gestores',  label: 'Gestores', icon: <UserCheck size={14} /> },
     { id: 'feed',      label: 'Reuniões', icon: <ScrollText size={14} /> },
     { id: 'eu',           label: 'Eu',           icon: <User size={14} />, badge: openDemandasCount > 0 ? openDemandasCount : undefined },
+    { id: 'reports',      label: 'Relatórios',   icon: <BarChart3 size={14} /> },
     { id: 'refinamentos', label: 'Refinamentos', icon: <BookOpen size={14} /> },
+    { id: 'logs',         label: 'Logs',          icon: <Terminal size={14} /> },
   ]
 
   const displayName = profile.name || 'Configurar perfil'

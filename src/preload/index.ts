@@ -88,6 +88,24 @@ contextBridge.exposeInMainWorld('api', {
     enqueue:          (filePath: string)    => ipcRenderer.invoke('ingestion:enqueue', filePath),
     listProcessados:  ()                    => ipcRenderer.invoke('ingestion:list-processados'),
     resetData:        ()                    => ipcRenderer.invoke('ingestion:reset-data'),
+    resetPersonData: (slug: string)         => ipcRenderer.invoke('ingestion:reset-person-data', slug),
     batchReingest:    (files: string[])     => ipcRenderer.invoke('ingestion:batch-reingest', files),
+  },
+
+  logs: {
+    write:     (level: string, module: string, msg: string, data?: unknown) => ipcRenderer.invoke('log:write', level, module, msg, data),
+    recent:    (opts?: unknown) => ipcRenderer.invoke('log:recent', opts),
+    files:     () => ipcRenderer.invoke('log:files'),
+    readFile:  (name: string) => ipcRenderer.invoke('log:read-file', name),
+    onEntry:   (cb: (e: unknown) => void) => ipcRenderer.on('log:entry', (_, entry) => cb(entry)),
+    removeListeners: () => ipcRenderer.removeAllListeners('log:entry'),
+  },
+
+  external: {
+    refreshDaily:   ()              => ipcRenderer.invoke('external:refresh-daily'),
+    refreshSprint:  ()              => ipcRenderer.invoke('external:refresh-sprint'),
+    getData:        (slug: string)  => ipcRenderer.invoke('external:get-data', slug),
+    listReports:    ()              => ipcRenderer.invoke('external:list-reports'),
+    getReport:      (path: string)  => ipcRenderer.invoke('external:get-report', path),
   },
 })
