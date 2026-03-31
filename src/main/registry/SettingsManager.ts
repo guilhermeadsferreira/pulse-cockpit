@@ -42,6 +42,27 @@ export interface AppSettings {
   defaultProvider?: LLMProvider
   /** Override de provider por operação. Operações sem override herdam defaultProvider. */
   providers?: Partial<Record<IngestionOperation, OperationProviderConfig>>
+
+  // Jira
+  jiraBaseUrl?: string
+  jiraEmail?: string
+  jiraApiToken?: string
+  jiraProjectKey?: string
+  jiraBoardId?: number
+  jiraEnabled?: boolean
+
+  // GitHub
+  githubToken?: string
+  githubOrg?: string
+  githubTeamSlug?: string
+  githubRepos?: string[]
+  githubReposCachedAt?: string
+  githubEnabled?: boolean
+
+  // Relatórios
+  dailyReportEnabled?: boolean
+  dailyReportTime?: string
+  sprintReportEnabled?: boolean
 }
 
 const SETTINGS_DIR  = join(homedir(), '.pulsecockpit')
@@ -67,6 +88,8 @@ const DEFAULTS: AppSettings = {
   claudeBinPath:  detectClaudeBin(),
   managerName:    '',
   managerRole:    '',
+  githubTeamSlug: '',
+  githubRepos:    [],
 }
 
 export const SettingsManager = {

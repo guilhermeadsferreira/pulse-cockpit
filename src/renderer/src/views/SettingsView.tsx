@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen, Cpu, CheckCircle2, XCircle, User, RefreshCw, Zap, Sparkles, ChevronDown, ChevronRight } from 'lucide-react'
+import { FolderOpen, Cpu, CheckCircle2, XCircle, User, RefreshCw, Zap, Sparkles, ChevronDown, ChevronRight, ExternalLink, Github, AlertCircle } from 'lucide-react'
 import type { AppSettings, IngestionOperation, OperationProviderConfig } from '../types/ipc'
 
 export function SettingsView() {
@@ -11,6 +11,8 @@ export function SettingsView() {
   const [reingestInfo, setReingestInfo] = useState<{ count: number; files: string[] } | null>(null)
   const [reingestResult, setReingestResult] = useState<string | null>(null)
   const [showProviderOverrides, setShowProviderOverrides] = useState(false)
+  const [syncingRepos, setSyncingRepos] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   useEffect(() => {
     window.api.settings.load().then(setForm)
@@ -90,6 +92,20 @@ export function SettingsView() {
     } else {
       setClaudeStatus('error')
       setClaudeError(result.error ?? 'Erro desconhecido')
+    }
+  }
+
+  async function handleSyncTeamRepos() {
+    setSyncingRepos(true)
+    setSyncError(null)
+    const result = await window.api.github.syncTeamRepos()
+    setSyncingRepos(false)
+    if (result.success) {
+      set('githubRepos', result.repos ?? [])
+      set('githubReposCachedAt', new Date().toISOString())
+      setSaved(false)
+    } else {
+      setSyncError(result.error ?? 'Erro ao sincronizar repositórios')
     }
   }
 
@@ -354,6 +370,192 @@ export function SettingsView() {
               {!form.claudeBinPath && (
                 <StatusLine ok={false}>Binário não configurado — instale o Claude Code CLI</StatusLine>
               )}
+            </Field>
+          </Section>
+
+          {/* Jira */}
+          <Section
+            icon={<ExternalLink size={14} />}
+            title="Jira"
+            desc="Integração com Jira — busca métricas por pessoa"
+          >
+            <Field
+              label="Ativar integração Jira"
+              hint={!form.jiraEmail ? 'Configure os campos abaixo para ativar' : 'Busca métricas automaticamente no pipeline'}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: form.jiraEmail ? 'pointer' : 'default' }}>
+                <input
+                  type="checkbox"
+                  checked={form.jiraEnabled ?? false}
+                  disabled={!form.jiraEmail}
+                  onChange={(e) => set('jiraEnabled', e.target.checked)}
+                />
+                <span style={{ fontSize: 12, color: form.jiraEmail ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  Usar Jira para métricas externas
+                </span>
+              </label>
+            </Field>
+            <Field
+              label="URL do Jira"
+              hint="Ex: https://seu-projeto.atlassian.net"
+            >
+              <input
+                style={styles.input}
+                type="text"
+                value={form.jiraBaseUrl ?? ''}
+                onChange={(e) => set('jiraBaseUrl', e.target.value || undefined)}
+                placeholder="https://..."
+              />
+            </Field>
+            <Field
+              label="Email do Jira"
+              hint="Email usado para autenticar no Jira"
+            >
+              <input
+                style={styles.input}
+                type="text"
+                value={form.jiraEmail ?? ''}
+                onChange={(e) => set('jiraEmail', e.target.value || undefined)}
+                placeholder="seu@email.com"
+              />
+            </Field>
+            <Field
+              label="API Token"
+              hint={<>Obtenha em <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>id.atlassian.com</a></>}
+            >
+              <input
+                style={styles.input}
+                type="password"
+                value={form.jiraApiToken ?? ''}
+                onChange={(e) => set('jiraApiToken', e.target.value || undefined)}
+                placeholder="••••••••"
+              />
+            </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field
+                label="Project Key"
+                hint="Ex: TEAM"
+              >
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={form.jiraProjectKey ?? ''}
+                  onChange={(e) => set('jiraProjectKey', e.target.value || undefined)}
+                  placeholder="TEAM"
+                />
+              </Field>
+              <Field
+                label="Board ID"
+                hint="ID do quadro Scrum"
+              >
+                <input
+                  style={styles.input}
+                  type="number"
+                  value={form.jiraBoardId ?? ''}
+                  onChange={(e) => set('jiraBoardId', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                  placeholder="123"
+                />
+              </Field>
+            </div>
+            {form.jiraEnabled && !form.jiraBaseUrl && (
+              <StatusLine ok={false}>
+                <AlertCircle size={12} /> Configure a URL do Jira para ativar
+              </StatusLine>
+            )}
+          </Section>
+
+          {/* GitHub */}
+          <Section
+            icon={<Github size={14} />}
+            title="GitHub"
+            desc="Integração com GitHub — busca PRs, commits e reviews"
+          >
+            <Field
+              label="Ativar integração GitHub"
+              hint={!form.githubToken ? 'Configure os campos abaixo para ativar' : 'Busca métricas automaticamente no pipeline'}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: form.githubToken ? 'pointer' : 'default' }}>
+                <input
+                  type="checkbox"
+                  checked={form.githubEnabled ?? false}
+                  disabled={!form.githubToken}
+                  onChange={(e) => set('githubEnabled', e.target.checked)}
+                />
+                <span style={{ fontSize: 12, color: form.githubToken ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  Usar GitHub para métricas externas
+                </span>
+              </label>
+            </Field>
+            <Field
+              label="Personal Access Token"
+              hint={<>Fine-grained PAT com permissões: Pull requests (Read), Contents (Read), Teams (Read). Gerar em <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>github.com/settings/tokens</a></>}
+            >
+              <input
+                style={styles.input}
+                type="password"
+                value={form.githubToken ?? ''}
+                onChange={(e) => set('githubToken', e.target.value || undefined)}
+                placeholder="ghp_..."
+              />
+            </Field>
+            <Field
+              label="Organização"
+              hint="Nome da organização GitHub"
+            >
+              <input
+                style={styles.input}
+                type="text"
+                value={form.githubOrg ?? ''}
+                onChange={(e) => set('githubOrg', e.target.value || undefined)}
+                placeholder="minha-empresa"
+              />
+            </Field>
+            <Field
+              label="Team Slug"
+              hint={<>Slug do time no GitHub (ex: <code>conta-digital</code>). Deixe vazio se não usar teams.</>}
+            >
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={form.githubTeamSlug ?? ''}
+                  onChange={(e) => set('githubTeamSlug', e.target.value || undefined)}
+                  placeholder="conta-digital"
+                />
+                <button
+                  onClick={handleSyncTeamRepos}
+                  disabled={!form.githubTeamSlug || !form.githubToken || syncingRepos}
+                  title={!form.githubTeamSlug ? 'Configure o team slug primeiro' : 'Sincronizar repositórios do time'}
+                  style={{
+                    ...styles.btnSecondary,
+                    opacity: (!form.githubTeamSlug || !form.githubToken || syncingRepos) ? 0.6 : 1,
+                  }}
+                >
+                  <RefreshCw size={12} style={syncingRepos ? { animation: 'spin 1s linear infinite' } : {}} />
+                  {syncingRepos ? 'Sincronizando...' : 'Sincronizar'}
+                </button>
+              </div>
+              {syncError && (
+                <StatusLine ok={false}>{syncError}</StatusLine>
+              )}
+            </Field>
+            <Field
+              label="Repositórios"
+              hint={form.githubReposCachedAt 
+                ? `Sincronizado em ${new Date(form.githubReposCachedAt).toLocaleString('pt-BR')}. Deixe vazio para monitorar todos do team.`
+                : 'Separe por vírgula. Deixe vazio se usar team slug acima.'
+              }
+            >
+              <textarea
+                style={{
+                  ...styles.input,
+                  width: '100%', height: 60,
+                  resize: 'vertical', lineHeight: 1.6,
+                }}
+                value={(form.githubRepos ?? []).join(', ')}
+                onChange={(e) => set('githubRepos', e.target.value.split(',').map(r => r.trim()).filter(Boolean) || undefined)}
+                placeholder="repo1, repo2, repo3"
+              />
             </Field>
           </Section>
 

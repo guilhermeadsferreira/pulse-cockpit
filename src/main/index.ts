@@ -20,6 +20,9 @@ import { buildAutoavaliacaoPrompt, renderAutoavaliacaoMarkdown, type Autoavaliac
 import type { CycleReportParams, AutoavaliacaoParams, DemandaStatus } from '../renderer/src/types/ipc'
 import { Logger, type LogLevel } from './logging'
 import { Scheduler } from './external/Scheduler'
+import { WeeklyReportGenerator } from './external/WeeklyReportGenerator'
+import { MonthlyReportGenerator } from './external/MonthlyReportGenerator'
+import { GitHubClient } from './external/GitHubClient'
 
 const APP_ICON = app.isPackaged
   ? join(process.resourcesPath, 'Logo.png')
@@ -651,14 +654,35 @@ function registerIpcHandlers(): void {
   // ── External Intelligence ─────────────────────────────────
   ipcMain.handle('external:refresh-daily', async () => {
     const { workspacePath } = SettingsManager.load()
+    const log = Logger.getInstance().child('IPC')
+    log.info('external:refresh-daily chamado')
     const scheduler = new Scheduler(workspacePath)
-    return scheduler.generateDailyReport()
+    try {
+      const result = await scheduler.generateDailyReport()
+      log.info('external:refresh-daily sucesso', { result })
+      return result
+    } catch (err) {
+      log.error('external:refresh-daily erro', { error: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
   })
 
   ipcMain.handle('external:refresh-sprint', async () => {
     const { workspacePath } = SettingsManager.load()
     const scheduler = new Scheduler(workspacePath)
     return scheduler.generateSprintReport()
+  })
+
+  ipcMain.handle('external:refresh-weekly', async () => {
+    const { workspacePath } = SettingsManager.load()
+    const generator = new WeeklyReportGenerator(workspacePath)
+    return generator.generate()
+  })
+
+  ipcMain.handle('external:refresh-monthly', async (_event, yearMonth?: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const generator = new MonthlyReportGenerator(workspacePath)
+    return generator.generate(yearMonth)
   })
 
   ipcMain.handle('external:get-data', async (_event, slug: string) => {
@@ -697,6 +721,43 @@ function registerIpcHandlers(): void {
       return readFileSync(fullPath, 'utf-8')
     } catch {
       return ''
+    }
+  })
+
+  ipcMain.handle('external:refresh-person', async (_event, slug: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const scheduler = new Scheduler(workspacePath)
+    return scheduler.refreshPerson(slug)
+  })
+
+  ipcMain.handle('github:sync-team-repos', async () => {
+    const settings = SettingsManager.load()
+    const { githubToken, githubOrg, githubTeamSlug } = settings
+
+    if (!githubToken || !githubOrg || !githubTeamSlug) {
+      return { success: false, error: 'Token, organização e team slug são obrigatórios' }
+    }
+
+    try {
+      const client = new GitHubClient({ token: githubToken, org: githubOrg, repos: [] })
+      const repos = await client.listTeamRepos(githubTeamSlug)
+      SettingsManager.save({
+        ...settings,
+        githubRepos: repos,
+        githubReposCachedAt: new Date().toISOString(),
+      })
+      return { success: true, repos }
+    } catch (err) {
+      const ghErr = err as { status?: number; message?: string }
+      let errorMsg = 'Erro ao sincronizar repositórios'
+      if (ghErr.status === 404) {
+        errorMsg = 'Team não encontrado ou sem acesso. Verifique o slug.'
+      } else if (ghErr.status === 403) {
+        errorMsg = 'Sem permissão para listar repos do team. Verifique as permissões do token.'
+      } else if (ghErr.message) {
+        errorMsg = ghErr.message
+      }
+      return { success: false, error: errorMsg }
     }
   })
 }

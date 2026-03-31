@@ -8,6 +8,8 @@ interface ReportMeta {
   size: number
 }
 
+const DAILY_REFRESH_EVENT = 'pulse:external-daily-refresh'
+
 export function RelatoriosView() {
   const [reports, setReports] = useState<ReportMeta[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,6 +17,7 @@ export function RelatoriosView() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [successHint, setSuccessHint] = useState<string | null>(null)
 
   async function loadReports() {
     setLoading(true)
@@ -28,11 +31,87 @@ export function RelatoriosView() {
 
   useEffect(() => { loadReports() }, [])
 
+  function formatDateBR(date: Date): string {
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}-${month}-${year}`
+  }
+
   async function handleRefreshDaily() {
     setRefreshing(true)
+    setSuccessHint(null)
     try {
-      await window.api.external.refreshDaily()
+      const result = await window.api.external.refreshDaily()
+      const baseName = result.split(/[/\\]/).pop() ?? result
+      window.dispatchEvent(new CustomEvent(DAILY_REFRESH_EVENT))
+      setSuccessHint(
+        `Daily gerado: ${baseName}. Dados externos (Jira/GitHub) foram gravados no workspace e as fichas abertas atualizam automaticamente.`,
+      )
       await loadReports()
+      const today = new Date()
+      const dailyFile = `Daily-${formatDateBR(today)}.md`
+      setExpanded(dailyFile)
+      setPreviewLoading(true)
+      try {
+        const content = await window.api.external.getReport(dailyFile)
+        setPreview(content)
+      } finally {
+        setPreviewLoading(false)
+      }
+    } catch (err) {
+      console.error('[RelatoriosView] refreshDaily falhou:', err)
+      alert(`Erro ao atualizar: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  async function handleRefreshWeekly() {
+    setRefreshing(true)
+    setSuccessHint(null)
+    try {
+      const result = await window.api.external.refreshWeekly()
+      const baseName = result.split(/[/\\]/).pop() ?? result
+      setSuccessHint(`Weekly gerado: ${baseName}`)
+      await loadReports()
+      const fileName = baseName
+      setExpanded(fileName)
+      setPreviewLoading(true)
+      try {
+        const content = await window.api.external.getReport(fileName)
+        setPreview(content)
+      } finally {
+        setPreviewLoading(false)
+      }
+    } catch (err) {
+      console.error('[RelatoriosView] refreshWeekly falhou:', err)
+      alert(`Erro ao gerar weekly: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  async function handleRefreshMonthly(yearMonth?: string) {
+    setRefreshing(true)
+    setSuccessHint(null)
+    try {
+      const result = await window.api.external.refreshMonthly(yearMonth)
+      const baseName = result.split(/[/\\]/).pop() ?? result
+      setSuccessHint(`Monthly gerado: ${baseName}`)
+      await loadReports()
+      const fileName = baseName
+      setExpanded(fileName)
+      setPreviewLoading(true)
+      try {
+        const content = await window.api.external.getReport(fileName)
+        setPreview(content)
+      } finally {
+        setPreviewLoading(false)
+      }
+    } catch (err) {
+      console.error('[RelatoriosView] refreshMonthly falhou:', err)
+      alert(`Erro ao gerar monthly: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setRefreshing(false)
     }
@@ -54,7 +133,9 @@ export function RelatoriosView() {
     }
   }
 
-  const dailyReports = reports.filter(r => r.name.startsWith('daily_'))
+  const dailyReports = reports.filter(r => r.name.startsWith('Daily-'))
+  const weeklyReports = reports.filter(r => r.name.startsWith('Weekly-'))
+  const monthlyReports = reports.filter(r => r.name.startsWith('Monthly-'))
   const sprintReports = reports.filter(r => r.name.startsWith('sprint_'))
 
   return (
@@ -77,21 +158,90 @@ export function RelatoriosView() {
             {reports.length} relatório{reports.length !== 1 ? 's' : ''} gerado{reports.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <button
-          onClick={handleRefreshDaily}
-          disabled={refreshing}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={handleRefreshDaily}
+            disabled={refreshing}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 6, border: 'none',
+              background: 'var(--accent)', color: '#09090c',
+              fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {refreshing
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Atualizando…</>
+              : <><RefreshCw size={12} /> Daily</>}
+          </button>
+          <button
+            onClick={handleRefreshWeekly}
+            disabled={refreshing}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-secondary)',
+              fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {refreshing
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /></>
+              : <><RefreshCw size={12} /> Weekly</>}
+          </button>
+          <button
+            onClick={() => handleRefreshMonthly()}
+            disabled={refreshing}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-secondary)',
+              fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {refreshing
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /></>
+              : <><RefreshCw size={12} /> Monthly</>}
+          </button>
+        </div>
+      </div>
+
+      {successHint && (
+        <div
+          role="status"
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', borderRadius: 6, border: 'none',
-            background: 'var(--accent)', color: '#09090c',
-            fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600, cursor: 'pointer',
+            margin: '0 40px 0',
+            padding: '10px 14px',
+            borderRadius: 6,
+            fontSize: 12.5,
+            lineHeight: 1.45,
+            color: 'var(--text-secondary)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 12,
           }}
         >
-          {refreshing
-            ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Atualizando…</>
-            : <><RefreshCw size={12} /> Atualizar Agora</>}
-        </button>
-      </div>
+          <span>{successHint}</span>
+          <button
+            type="button"
+            onClick={() => setSuccessHint(null)}
+            style={{
+              flexShrink: 0,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 0,
+            }}
+            aria-label="Fechar"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
@@ -122,6 +272,30 @@ export function RelatoriosView() {
               <ReportSection
                 title="Daily Reports"
                 reports={dailyReports}
+                expanded={expanded}
+                preview={preview}
+                previewLoading={previewLoading}
+                onToggle={togglePreview}
+              />
+            )}
+
+            {/* Weekly Reports */}
+            {weeklyReports.length > 0 && (
+              <ReportSection
+                title="Weekly Reports"
+                reports={weeklyReports}
+                expanded={expanded}
+                preview={preview}
+                previewLoading={previewLoading}
+                onToggle={togglePreview}
+              />
+            )}
+
+            {/* Monthly Reports */}
+            {monthlyReports.length > 0 && (
+              <ReportSection
+                title="Monthly Reports"
+                reports={monthlyReports}
                 expanded={expanded}
                 preview={preview}
                 previewLoading={previewLoading}
@@ -210,10 +384,22 @@ function ReportCard({
   previewLoading: boolean
   onToggle: () => void
 }) {
+  const isDaily = r.name.startsWith('Daily-')
+  const isWeekly = r.name.startsWith('Weekly-')
+  const isMonthly = r.name.startsWith('Monthly-')
   const isSprint = r.name.startsWith('sprint_')
-  const label = isSprint
-    ? r.name.replace('sprint_', '').replace('.md', '').replace(/-/g, ' ')
-    : r.name.replace('daily_', '').replace('.md', '')
+
+  let label = r.name.replace('.md', '')
+  if (isDaily) {
+    label = r.name.replace('Daily-', '').replace('.md', '')
+  } else if (isWeekly) {
+    label = r.name.replace('Weekly-', '').replace('.md', '').replace('-a-', ' a ')
+  } else if (isMonthly) {
+    const mes = label.replace('Monthly-', '').replace('.md', '')
+    label = mes
+  } else if (isSprint) {
+    label = r.name.replace('sprint_', '').replace('.md', '').replace(/-/g, ' ')
+  }
 
   const isToday = r.date === new Date().toISOString().slice(0, 10)
 
@@ -253,6 +439,26 @@ function ReportCard({
             color: 'var(--text-muted)', whiteSpace: 'nowrap',
           }}>
             SPRINT
+          </span>
+        )}
+        {isWeekly && (
+          <span style={{
+            fontSize: 9, fontWeight: 600, letterSpacing: '0.06em',
+            padding: '2px 6px', borderRadius: 20,
+            background: 'var(--surface-3)', border: '1px solid var(--border)',
+            color: 'var(--text-muted)', whiteSpace: 'nowrap',
+          }}>
+            WEEKLY
+          </span>
+        )}
+        {isMonthly && (
+          <span style={{
+            fontSize: 9, fontWeight: 600, letterSpacing: '0.06em',
+            padding: '2px 6px', borderRadius: 20,
+            background: 'var(--surface-3)', border: '1px solid var(--border)',
+            color: 'var(--text-muted)', whiteSpace: 'nowrap',
+          }}>
+            MONTHLY
           </span>
         )}
         <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>

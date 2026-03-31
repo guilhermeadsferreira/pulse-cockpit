@@ -104,8 +104,15 @@ contextBridge.exposeInMainWorld('api', {
   external: {
     refreshDaily:   ()              => ipcRenderer.invoke('external:refresh-daily'),
     refreshSprint:  ()              => ipcRenderer.invoke('external:refresh-sprint'),
+    refreshWeekly:  ()              => ipcRenderer.invoke('external:refresh-weekly'),
+    refreshMonthly: (yearMonth?: string) => ipcRenderer.invoke('external:refresh-monthly', yearMonth),
+    refreshPerson:  (slug: string)  => ipcRenderer.invoke('external:refresh-person', slug),
     getData:        (slug: string)  => ipcRenderer.invoke('external:get-data', slug),
     listReports:    ()              => ipcRenderer.invoke('external:list-reports'),
     getReport:      (path: string)  => ipcRenderer.invoke('external:get-report', path),
+  },
+
+  github: {
+    syncTeamRepos: () => ipcRenderer.invoke('github:sync-team-repos'),
   },
 })

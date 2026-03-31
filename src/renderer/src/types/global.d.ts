@@ -101,9 +101,16 @@ declare global {
       external: {
         refreshDaily:   () => Promise<string>
         refreshSprint:  () => Promise<string | null>
+        refreshWeekly:  () => Promise<string>
+        refreshMonthly: (yearMonth?: string) => Promise<string>
+        refreshPerson:  (slug: string) => Promise<void>
         getData:        (slug: string) => Promise<string | null>
         listReports:    () => Promise<Array<{ name: string; date: string; size: number }>>
         getReport:      (path: string) => Promise<string>
+      }
+
+      github: {
+        syncTeamRepos: () => Promise<{ success: boolean; repos?: string[]; error?: string }>
       }
     }
   }

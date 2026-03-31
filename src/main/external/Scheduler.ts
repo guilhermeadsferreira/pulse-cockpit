@@ -6,9 +6,11 @@ import { ExternalDataPass } from './ExternalDataPass'
 import { DailyReportGenerator } from './DailyReportGenerator'
 import { SprintReportGenerator } from './SprintReportGenerator'
 import { JiraClient } from './JiraClient'
+import { GitHubClient } from './GitHubClient'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('Scheduler')
+const CACHE_TTL_7_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 interface SchedulerState {
   lastDailyRun: string | null
@@ -62,6 +64,28 @@ export class Scheduler {
 
     if (jiraEnabled && settings.jiraBoardId) {
       await this.checkSprintChange(settings)
+    }
+
+    // Auto-sync GitHub team repos on startup if cache expired or repos empty
+    if (githubEnabled && settings.githubTeamSlug) {
+      const cacheExpired = !settings.githubReposCachedAt ||
+        (Date.now() - new Date(settings.githubReposCachedAt).getTime()) > CACHE_TTL_7_DAYS_MS
+
+      if (cacheExpired || !settings.githubRepos?.length) {
+        log.info('auto-sync de repos do team no startup', { teamSlug: settings.githubTeamSlug })
+        try {
+          const client = new GitHubClient({ token: settings.githubToken!, org: settings.githubOrg!, repos: [] })
+          const repos = await client.listTeamRepos(settings.githubTeamSlug)
+          SettingsManager.save({
+            ...settings,
+            githubRepos: repos,
+            githubReposCachedAt: new Date().toISOString(),
+          })
+          log.info('Repos syncados no startup', { teamSlug: settings.githubTeamSlug, count: repos.length })
+        } catch (err) {
+          log.warn('Auto-sync de repos falhou (graceful)', { error: err instanceof Error ? err.message : String(err) })
+        }
+      }
     }
   }
 

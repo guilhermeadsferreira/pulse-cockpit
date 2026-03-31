@@ -7,9 +7,44 @@ import { DemandaRegistry } from '../registry/DemandaRegistry'
 import { fetchJiraMetrics, type JiraPersonMetrics } from './JiraMetrics'
 import { fetchGitHubMetrics, type GitHubPersonMetrics } from './GitHubMetrics'
 import { analyze, type CrossInsight, type CrossAnalyzerInput } from './CrossAnalyzer'
+import { GitHubClient } from './GitHubClient'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('ExternalDataPass')
+
+const CACHE_TTL_7_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+async function getRepos(settings: AppSettings): Promise<string[]> {
+  const { githubToken, githubOrg, githubRepos, githubTeamSlug, githubReposCachedAt } = settings
+
+  if (githubRepos && githubRepos.length > 0) {
+    return githubRepos
+  }
+
+  if (githubTeamSlug && githubToken && githubOrg) {
+    const cacheAge = githubReposCachedAt
+      ? Date.now() - new Date(githubReposCachedAt).getTime()
+      : Infinity
+
+    if (cacheAge > CACHE_TTL_7_DAYS_MS) {
+      try {
+        const client = new GitHubClient({ token: githubToken, org: githubOrg, repos: [] })
+        const repos = await client.listTeamRepos(githubTeamSlug)
+        SettingsManager.save({
+          ...settings,
+          githubRepos: repos,
+          githubReposCachedAt: new Date().toISOString(),
+        })
+        log.info('Repos syncados automaticamente do team', { teamSlug: githubTeamSlug, count: repos.length })
+        return repos
+      } catch (err) {
+        log.warn('Sync automático de repos falhou (graceful)', { error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
+  return githubRepos ?? []
+}
 
 export interface ExternalDataSnapshot {
   jira: JiraPersonMetrics | null
@@ -45,45 +80,53 @@ export class ExternalDataPass {
    * Main entry point: runs external data fetch for a single person.
    * Called from IngestionPipeline after syncItemToPerson().
    * Graceful degradation: never throws, logs errors and returns null on failure.
+   * @param forceRefresh bypasses cache and always fetches fresh data
    */
-  async run(slug: string): Promise<ExternalDataSnapshot | null> {
+  async run(slug: string, forceRefresh = false): Promise<ExternalDataSnapshot | null> {
     const settings = SettingsManager.load()
     const jiraEnabled = !!(settings.jiraEnabled && settings.jiraBaseUrl && settings.jiraApiToken)
     const githubEnabled = !!(settings.githubEnabled && settings.githubToken)
 
     if (!jiraEnabled && !githubEnabled) {
+      log.info('ExternalDataPass.run: integrações desativadas', { slug })
       return null
     }
 
     const registry = new PersonRegistry(this.workspacePath)
     const person = registry.get(slug)
     if (!person) {
-      log.debug('pessoa não encontrada, pulando', { slug })
+      log.warn('ExternalDataPass.run: pessoa não encontrada', { slug })
       return null
     }
 
     const hasExternalIdentity = !!(person.jiraEmail || person.githubUsername)
     if (!hasExternalIdentity) {
-      log.debug('sem identidade externa, pulando', { slug })
+      log.debug('ExternalDataPass.run: sem identidade externa, pulando', { slug })
       return null
     }
 
-    // Check cache
-    const cached = this.readCache(slug)
-    if (cached && !this.isCacheExpired(cached)) {
-      log.debug('cache hit', { slug, age: Date.now() - cached.fetchedAt })
-      return cached.data
+    // Check cache (unless force refresh)
+    if (!forceRefresh) {
+      const cached = this.readCache(slug)
+      if (cached && !this.isCacheExpired(cached)) {
+        log.debug('ExternalDataPass.run: cache hit (bypassed by forceRefresh=false)', { slug, age: Date.now() - cached.fetchedAt })
+        return cached.data
+      }
+    } else {
+      log.info('ExternalDataPass.run: forçando refresh (bypassing cache)', { slug })
     }
 
     try {
+      log.info('ExternalDataPass.run: buscando dados frescos', { slug, jiraEnabled, githubEnabled })
       const snapshot = await this.fetchAndAnalyze(settings, person)
       this.writeCache(slug, snapshot)
       this.updateExternalDataYaml(slug, snapshot)
       this.updatePerfilSection(slug, snapshot)
       this.generateDemandasIfNeeded(slug, snapshot.insights, snapshot.atualizadoEm)
+      log.info('ExternalDataPass.run: sucesso', { slug, hasJira: !!snapshot.jira, hasGithub: !!snapshot.github })
       return snapshot
     } catch (err) {
-      log.error('ExternalDataPass falhou (graceful degradation)', { slug, error: err instanceof Error ? err.message : String(err) })
+      log.error('ExternalDataPass.run: falhou', { slug, error: err instanceof Error ? err.message : String(err) })
       return null
     }
   }
@@ -111,12 +154,13 @@ export class ExternalDataPass {
     }
 
     if (settings.githubEnabled && settings.githubToken && person.githubUsername) {
+      const repos = await getRepos(settings)
       fetchPromises.push(
         fetchGitHubMetrics({
           config: {
             token: settings.githubToken,
             org: settings.githubOrg ?? '',
-            repos: settings.githubRepos ?? [],
+            repos,
           },
           username: person.githubUsername,
         }).then(m => { githubMetrics = m })

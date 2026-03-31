@@ -24,6 +24,9 @@ export interface PersonConfig {
   motivo_alerta?: string
   criado_em: string
   atualizado_em: string
+  // Identidade externa (V3)
+  jiraEmail?: string
+  githubUsername?: string
 }
 
 export interface LideradoSnapshot {

@@ -48,9 +48,33 @@ export interface DailyStandupItem {
 }
 
 export interface DailyStandupData {
-  email: string
+  assignee: string
   recentActivity: DailyStandupItem[]
   blockers: string[]
+}
+
+export interface JiraStatusTransition {
+  from: string
+  to: string
+  timestamp: string
+}
+
+export interface JiraChangelogEntry {
+  issueId: string
+  created: string
+  items: Array<{
+    field: string
+    fromString: string | null
+    toString: string | null
+  }>
+}
+
+export interface JiraComment {
+  id: string
+  author: string
+  body: string
+  created: string
+  updated: string
 }
 
 interface RateLimiter {
@@ -60,32 +84,41 @@ interface RateLimiter {
   refillRate: number
 }
 
-interface JiraSearchResponse {
-  issues: Array<{
-    key: string
-    fields: {
-      summary: string
-      status: {
-        name: string
-        statusCategory: { key: string }
-      }
-      issuetype: { name: string }
-      priority: { name: string }
-      assignee: { emailAddress: string } | null
-      created: string
-      updated: string
-      resolutiondate: string | null
-      customfield_10016: number | null
-      labels: string[]
-      sprint: { id: number; name: string } | null
-      issuelinks: Array<{
-        type: { name: string; inward: string }
-        outwardIssue?: { key: string; fields: { status: { statusCategory: { key: string } } } }
-        inwardIssue?: { key: string }
-      }>
+type JiraSearchIssueRow = {
+  key: string
+  fields: {
+    summary: string
+    status: {
+      name: string
+      statusCategory: { key: string }
     }
-  }>
+    issuetype: { name: string }
+    priority: { name: string }
+    assignee: { emailAddress?: string; displayName: string } | null
+    created: string
+    updated: string
+    resolutiondate: string | null
+    customfield_10016: number | null
+    labels: string[]
+    sprint: { id: number; name: string } | null
+    issuelinks: Array<{
+      type: { name: string; inward: string }
+      outwardIssue?: { key: string; fields: { status: { statusCategory: { key: string } } } }
+      inwardIssue?: { key: string }
+    }>
+  }
+}
+
+interface JiraSearchResponse {
+  issues: JiraSearchIssueRow[]
   total: number
+}
+
+/** POST /rest/api/3/search/jql — paginação por nextPageToken */
+interface JiraSearchJqlResponse {
+  issues: JiraSearchIssueRow[]
+  isLast?: boolean
+  nextPageToken?: string
 }
 
 interface JiraBoardSprintResponse {
@@ -127,11 +160,16 @@ export class JiraClient {
     this.rateLimiter.lastRefill = now
   }
 
-  private async request<T>(path: string, params?: Record<string, string>): Promise<T> {
+  private async request<T>(
+    path: string,
+    options: { method?: 'GET' | 'POST'; body?: Record<string, unknown>; params?: Record<string, string> } = {}
+  ): Promise<T> {
     await this.acquireToken()
 
+    const { method = 'GET', body, params } = options
+
     const url = new URL(`${this.baseUrl}${path}`)
-    if (params) {
+    if (params && method === 'GET') {
       for (const [k, v] of Object.entries(params)) {
         url.searchParams.set(k, v)
       }
@@ -144,11 +182,13 @@ export class JiraClient {
         const timeout = setTimeout(() => controller.abort(), 15_000)
 
         const res = await fetch(url.toString(), {
-          method: 'GET',
+          method,
           headers: {
             Authorization: this.authHeader,
+            'Content-Type': 'application/json',
             Accept: 'application/json',
           },
+          body: body ? JSON.stringify(body) : undefined,
           signal: controller.signal,
         })
 
@@ -200,18 +240,46 @@ export class JiraClient {
     throw new JiraError('Max retries exceeded', 0)
   }
 
-  async searchIssuesByEmail(email: string, jql?: string): Promise<JiraIssue[]> {
-    const query = jql || `assignee = "${email}" AND status != Done`
+  async searchIssuesByAssignee(assignee: string, jql?: string): Promise<JiraIssue[]> {
+    const query = jql || `assignee = "${assignee}" AND status != Done`
     const allIssues: JiraIssue[] = []
-    let startAt = 0
     const maxResults = 50
+    const searchFields = [
+      'summary',
+      'status',
+      'issuetype',
+      'priority',
+      'assignee',
+      'created',
+      'updated',
+      'resolutiondate',
+      'customfield_10016',
+      'labels',
+      'sprint',
+      'issuelinks',
+    ]
 
-    do {
-      const response = await this.request<JiraSearchResponse>('/rest/api/3/search', {
+    let nextPageToken: string | undefined
+
+    for (;;) {
+      log.info('JiraClient: fazendo request POST para /rest/api/3/search/jql', {
+        query,
+        maxResults,
+        page: nextPageToken ? 'next' : 'first',
+      })
+
+      const body: Record<string, unknown> = {
         jql: query,
-        startAt: String(startAt),
-        maxResults: String(maxResults),
-        fields: 'summary,status,issuetype,priority,assignee,created,updated,resolutiondate,customfield_10016,labels,sprint,issuelinks',
+        maxResults,
+        fields: searchFields,
+      }
+      if (nextPageToken !== undefined) {
+        body.nextPageToken = nextPageToken
+      }
+
+      const response = await this.request<JiraSearchJqlResponse>('/rest/api/3/search/jql', {
+        method: 'POST',
+        body,
       })
 
       for (const issue of response.issues) {
@@ -234,7 +302,7 @@ export class JiraClient {
           statusCategory: f.status.statusCategory.key as JiraIssue['statusCategory'],
           type: f.issuetype.name,
           priority: f.priority.name,
-          assignee: f.assignee?.emailAddress || null,
+          assignee: f.assignee?.emailAddress || f.assignee?.displayName || null,
           created: f.created,
           updated: f.updated,
           resolved: f.resolutiondate,
@@ -247,8 +315,12 @@ export class JiraClient {
         })
       }
 
-      startAt += maxResults
-    } while (startAt < allIssues.length + maxResults && allIssues.length < 200)
+      if (allIssues.length >= 200) break
+      if (response.isLast === true) break
+      if (!response.nextPageToken) break
+
+      nextPageToken = response.nextPageToken
+    }
 
     return allIssues
   }
@@ -256,7 +328,7 @@ export class JiraClient {
   async getCurrentSprint(boardId: number): Promise<JiraSprint | null> {
     const response = await this.request<JiraBoardSprintResponse>(
       `/rest/agile/1.0/board/${boardId}/sprint`,
-      { state: 'active' },
+      { params: { state: 'active' } },
     )
 
     if (!response.values || response.values.length === 0) return null
@@ -283,9 +355,11 @@ export class JiraClient {
       const response = await this.request<{ issues: JiraSearchResponse['issues']; total: number }>(
         `/rest/agile/1.0/board/${boardId}/sprint/${sprintId}/issue`,
         {
-          startAt: String(startAt),
-          maxResults: String(maxResults),
-          fields: 'summary,status,issuetype,priority,assignee,created,updated,resolutiondate,customfield_10016,labels,sprint,issuelinks',
+          params: {
+            startAt: String(startAt),
+            maxResults: String(maxResults),
+            fields: 'summary,status,issuetype,priority,assignee,created,updated,resolutiondate,customfield_10016,labels,sprint,issuelinks',
+          },
         },
       )
 
@@ -307,7 +381,7 @@ export class JiraClient {
           statusCategory: f.status.statusCategory.key as JiraIssue['statusCategory'],
           type: f.issuetype.name,
           priority: f.priority.name,
-          assignee: f.assignee?.emailAddress || null,
+          assignee: f.assignee?.emailAddress || f.assignee?.displayName || null,
           created: f.created,
           updated: f.updated,
           resolved: f.resolutiondate,
@@ -327,16 +401,16 @@ export class JiraClient {
     return allIssues
   }
 
-  async getDailyStandupData(emails: string[]): Promise<DailyStandupData[]> {
+  async getDailyStandupData(assignees: string[]): Promise<DailyStandupData[]> {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const results: DailyStandupData[] = []
 
-    for (const email of emails) {
+    for (const assignee of assignees) {
       try {
-        const updatedJql = `assignee = "${email}" AND updated >= "${twentyFourHoursAgo}" ORDER BY updated DESC`
-        const issues = await this.searchIssuesByEmail(email, updatedJql)
+        const updatedJql = `assignee = "${assignee}" AND updated >= "${twentyFourHoursAgo}" ORDER BY updated DESC`
+        const issues = await this.searchIssuesByAssignee(assignee, updatedJql)
 
-        const activity: DailyStandupItem[] = issues.map(i => ({
+        const activity: DailyStandupItem[] = issues.map((i: JiraIssue) => ({
           issueKey: i.key,
           summary: i.summary,
           status: i.status,
@@ -345,26 +419,78 @@ export class JiraClient {
         }))
 
         const blockers = issues
-          .filter(i => i.linkedBlockers.length > 0 || i.statusCategory === 'indeterminate')
-          .filter(i => {
-            const hasBlockerLabel = i.labels.some(l => l.toLowerCase().includes('blocker'))
+          .filter((i: JiraIssue) => i.linkedBlockers.length > 0 || i.statusCategory === 'indeterminate')
+          .filter((i: JiraIssue) => {
+            const hasBlockerLabel = i.labels.some((l: string) => l.toLowerCase().includes('blocker'))
             const hasBlockerPriority = i.priority.toLowerCase().includes('blocker') || i.priority.toLowerCase().includes('highest')
             return hasBlockerLabel || hasBlockerPriority || i.linkedBlockers.length > 0
           })
-          .map(i => i.key)
+          .map((i: JiraIssue) => i.key)
 
         results.push({
-          email,
+          assignee,
           recentActivity: activity,
           blockers,
         })
       } catch (err) {
-        log.warn('Falha ao buscar standup data', { email, error: (err as Error).message })
-        results.push({ email, recentActivity: [], blockers: [] })
+        log.warn('Falha ao buscar standup data', { assignee, error: (err as Error).message })
+        results.push({ assignee, recentActivity: [], blockers: [] })
       }
     }
 
     return results
+  }
+
+  async getIssueChangelog(issueKey: string): Promise<JiraChangelogEntry[]> {
+    const changelogEntries: JiraChangelogEntry[] = []
+    let startAt = 0
+    const maxResults = 100
+
+    do {
+      const response = await this.request<{ values: Array<{ id: string; created: string; items: Array<{ field: string; fromString: string | null; toString: string | null }> }>; isLast: boolean; startAt: number }>(
+        `/rest/api/2/issue/${issueKey}/changelog`,
+        {
+          params: {
+            startAt: String(startAt),
+            maxResults: String(maxResults),
+          },
+        },
+      )
+
+      for (const entry of response.values) {
+        changelogEntries.push({
+          issueId: issueKey,
+          created: entry.created,
+          items: entry.items,
+        })
+      }
+
+      if (response.isLast) break
+      startAt += maxResults
+    } while (changelogEntries.length < 500)
+
+    return changelogEntries
+  }
+
+  async getIssueComments(issueKey: string, maxComments = 3): Promise<JiraComment[]> {
+    const response = await this.request<{ comments: Array<{ id: string; author: { displayName: string }; body: string; created: string; updated: string }>; total: number }>(
+      `/rest/api/3/issue/${issueKey}/comment`,
+      {
+        params: {
+          sort: 'created',
+          order: 'DESC',
+          maxResults: String(maxComments),
+        },
+      },
+    )
+
+    return (response.comments || []).map(c => ({
+      id: c.id,
+      author: c.author.displayName,
+      body: c.body.replace(/<[^>]*>/g, '').slice(0, 500),
+      created: c.created,
+      updated: c.updated,
+    }))
   }
 }
 

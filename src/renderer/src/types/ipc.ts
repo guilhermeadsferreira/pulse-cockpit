@@ -56,7 +56,9 @@ export interface AppSettings {
   // GitHub
   githubToken?: string
   githubOrg?: string
+  githubTeamSlug?: string
   githubRepos?: string[]
+  githubReposCachedAt?: string
   githubEnabled?: boolean
 
   // Relatórios

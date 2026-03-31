@@ -6,8 +6,11 @@ const log = Logger.getInstance().child('JiraMetrics')
 export interface Blocker {
   key: string
   summary: string
+  description: string
   blockedSince: string
   assignee: string
+  comments: string[]
+  flagged: boolean
 }
 
 export interface SprintSummary {
@@ -20,6 +23,13 @@ export interface SprintSummary {
   issuesConcluidas: number
 }
 
+export interface CycleTimeByStage {
+  todoToInProgress: number
+  inProgressToReview: number
+  reviewToDone: number
+  total: number
+}
+
 export interface JiraPersonMetrics {
   issuesAbertas: number
   issuesFechadasSprint: number
@@ -28,6 +38,7 @@ export interface JiraPersonMetrics {
   bugsAtivos: number
   blockersAtivos: Blocker[]
   tempoMedioCicloDias: number
+  cycleTimeByStage: CycleTimeByStage | null
   distribuicaoPorTipo: Record<string, number>
   distribuicaoPorStatus: Record<string, number>
   sprintAtual: SprintSummary | null
@@ -46,6 +57,7 @@ const EMPTY_METRICS: JiraPersonMetrics = {
   bugsAtivos: 0,
   blockersAtivos: [],
   tempoMedioCicloDias: 0,
+  cycleTimeByStage: null,
   distribuicaoPorTipo: {},
   distribuicaoPorStatus: {},
   sprintAtual: null,
@@ -56,7 +68,9 @@ export async function fetchJiraMetrics(input: JiraMetricsInput): Promise<JiraPer
 
   try {
     const client = new JiraClient(config)
-    const allIssues = await client.searchIssuesByEmail(email)
+    log.info('fetchJiraMetrics: buscando issues', { assignee: email, baseUrl: config.baseUrl })
+    const allIssues = await client.searchIssuesByAssignee(email)
+    log.info('fetchJiraMetrics: resultado', { assignee: email, totalIssues: allIssues.length })
 
     const openIssues = allIssues.filter(i => i.statusCategory !== 'done')
     const closedIssues = allIssues.filter(i => i.statusCategory === 'done')
@@ -68,16 +82,39 @@ export async function fetchJiraMetrics(input: JiraMetricsInput): Promise<JiraPer
 
     const bugsAtivos = openIssues.filter(i => i.type.toLowerCase() === 'bug').length
 
-    const blockersAtivos: Blocker[] = openIssues
-      .filter(i => i.linkedBlockers.length > 0 || i.labels.some(l => l.toLowerCase().includes('blocker')))
-      .map(i => ({
-        key: i.key,
-        summary: i.summary,
-        blockedSince: i.blockedSince || i.updated,
-        assignee: i.assignee || '',
-      }))
+    const blockerIssues = openIssues.filter(
+      i => i.linkedBlockers.length > 0 || i.labels.some(l => l.toLowerCase().includes('blocker'))
+    )
+    const blockersAtivos = await Promise.all(
+      blockerIssues.map(async i => {
+        let comments: string[] = []
+        try {
+          const commentData = await client.getIssueComments(i.key, 3)
+          comments = commentData.map(c => c.body)
+        } catch {
+          log.warn('Falha ao buscar comentários do blocker', { key: i.key })
+        }
+        return {
+          key: i.key,
+          summary: i.summary,
+          description: i.summary,
+          blockedSince: i.blockedSince || i.updated,
+          assignee: i.assignee || '',
+          comments,
+          flagged: i.labels.some(l => l.toLowerCase().includes('flagged')) || i.priority.toLowerCase().includes('highest'),
+        }
+      })
+    )
 
     const tempoMedioCicloDias = computeAverageCycleTime(closedIssues)
+
+    let cycleTimeByStage: CycleTimeByStage | null = null
+    try {
+      const recentClosed = closedIssues.filter(i => i.resolved).slice(0, 20)
+      cycleTimeByStage = await computeCycleTimeByStage(client, recentClosed)
+    } catch (err) {
+      log.warn('Falha ao calcular cycle time por etapa', { error: (err as Error).message })
+    }
 
     const distribuicaoPorTipo = computeDistribution(allIssues, i => i.type)
     const distribuicaoPorStatus = computeDistribution(allIssues, i => i.status)
@@ -116,6 +153,7 @@ export async function fetchJiraMetrics(input: JiraMetricsInput): Promise<JiraPer
       bugsAtivos,
       blockersAtivos,
       tempoMedioCicloDias,
+      cycleTimeByStage,
       distribuicaoPorTipo,
       distribuicaoPorStatus,
       sprintAtual,
@@ -159,4 +197,71 @@ function computeDistribution(
     dist[key] = (dist[key] || 0) + 1
   }
   return dist
+}
+
+async function computeCycleTimeByStage(
+  client: JiraClient,
+  closedIssues: JiraIssue[],
+): Promise<CycleTimeByStage> {
+  const statusMap: Record<string, string[]> = {
+    todoToInProgress: ['To Do', 'Backlog', 'Open', 'New'],
+    inProgressToReview: ['In Progress', 'In Dev', 'Development', 'Doing'],
+    reviewToDone: ['In Review', 'Review', 'QA', 'Testing', 'Done', 'Closed'],
+  }
+
+  type StageKey = 'todoToInProgress' | 'inProgressToReview' | 'reviewToDone'
+
+  const stageTimes: Record<StageKey, number[]> = {
+    todoToInProgress: [],
+    inProgressToReview: [],
+    reviewToDone: [],
+  }
+
+  for (const issue of closedIssues) {
+    try {
+      const changelog = await client.getIssueChangelog(issue.key)
+      const statusTransitions = changelog
+        .flatMap(entry => entry.items)
+        .filter(item => item.field === 'status')
+
+      if (statusTransitions.length === 0) continue
+
+      const sortedTransitions = statusTransitions
+        .map((t, idx) => ({
+          from: t.fromString,
+          to: t.toString,
+          created: changelog.find(c => c.items.includes(t))?.created || issue.created,
+        }))
+        .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime())
+
+      const createdTime = new Date(issue.created).getTime()
+      const resolvedTime = issue.resolved ? new Date(issue.resolved).getTime() : Date.now()
+
+      for (let i = 0; i < sortedTransitions.length; i++) {
+        const current = sortedTransitions[i]
+        const next = sortedTransitions[i + 1]
+        const currentTime = i === 0 ? createdTime : new Date(current.created).getTime()
+        const endTime = next ? new Date(next.created).getTime() : resolvedTime
+        const durationDays = (endTime - currentTime) / 86_400_000
+
+        for (const [stageKey, stageNames] of Object.entries(statusMap) as [StageKey, string[]][]) {
+          if (stageNames.some(n => current.to?.toLowerCase().includes(n.toLowerCase()))) {
+            stageTimes[stageKey].push(durationDays)
+            break
+          }
+        }
+      }
+    } catch {
+      log.warn('Falha ao buscar changelog para cycle time', { key: issue.key })
+    }
+  }
+
+  const avg = (arr: number[]): number => arr.length > 0 ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0
+
+  return {
+    todoToInProgress: avg(stageTimes.todoToInProgress),
+    inProgressToReview: avg(stageTimes.inProgressToReview),
+    reviewToDone: avg(stageTimes.reviewToDone),
+    total: Math.round((avg(stageTimes.todoToInProgress) + avg(stageTimes.inProgressToReview) + avg(stageTimes.reviewToDone)) * 10) / 10,
+  }
 }

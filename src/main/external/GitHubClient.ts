@@ -142,6 +142,26 @@ export class GitHubClient {
     return { pullRequests, commits, reviews }
   }
 
+  async listTeamRepos(teamSlug: string): Promise<string[]> {
+    try {
+      const { data } = await this.octokit.rest.teams.listReposInOrg({
+        org: this.org,
+        team_slug: teamSlug,
+        per_page: 100,
+      })
+      return data.map(r => r.name)
+    } catch (err) {
+      const ghErr = err as { status?: number; message?: string }
+      log.warn('Falha ao buscar repos do team', { 
+        org: this.org, 
+        teamSlug, 
+        status: ghErr.status, 
+        error: ghErr.message 
+      })
+      throw err
+    }
+  }
+
   private async fetchPRsForRepo(
     repo: string,
     username: string,

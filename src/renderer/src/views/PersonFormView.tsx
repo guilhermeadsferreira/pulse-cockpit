@@ -43,6 +43,8 @@ const EMPTY: Partial<PersonConfig> = {
   pdi: [],
   alerta_ativo: false,
   notas_manuais: '',
+  jiraEmail: undefined,
+  githubUsername: undefined,
 }
 
 export function PersonFormView() {
@@ -292,6 +294,30 @@ export function PersonFormView() {
               onChange={(e) => set('notas_manuais', e.target.value)}
               placeholder="Contexto relevante sobre esta pessoa que a IA deve conhecer…"
             />
+          </FormSection>
+
+          <FormSection title="Identidade Externa">
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+              Vincula esta pessoa às suas contas externas para buscar métricas automaticamente. Ambos os campos são opcionais — sem eles, a pessoa é ignorada na análise cruzada.
+            </p>
+            <Field label="Email do Jira" hint="Email usado no Jira (mesmo do Settings)">
+              <input
+                style={styles.input}
+                type="text"
+                value={form.jiraEmail ?? ''}
+                onChange={(e) => set('jiraEmail', e.target.value || undefined)}
+                placeholder="pessoa@empresa.com"
+              />
+            </Field>
+            <Field label="Username do GitHub" hint="Sem @ — igual ao perfil GitHub">
+              <input
+                style={styles.input}
+                type="text"
+                value={form.githubUsername ?? ''}
+                onChange={(e) => set('githubUsername', e.target.value || undefined)}
+                placeholder="username"
+              />
+            </Field>
           </FormSection>
 
         </div>
