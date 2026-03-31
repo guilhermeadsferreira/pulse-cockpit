@@ -92,6 +92,31 @@ export function RelatoriosView() {
     }
   }
 
+  async function handleRefreshSprint() {
+    setRefreshing(true)
+    setSuccessHint(null)
+    try {
+      const result = await window.api.external.refreshSprint()
+      const baseName = result.split(/[/\\]/).pop() ?? result
+      setSuccessHint(`Sprint gerado: ${baseName}`)
+      await loadReports()
+      const fileName = baseName
+      setExpanded(fileName)
+      setPreviewLoading(true)
+      try {
+        const content = await window.api.external.getReport(fileName)
+        setPreview(content)
+      } finally {
+        setPreviewLoading(false)
+      }
+    } catch (err) {
+      console.error('[RelatoriosView] refreshSprint falhou:', err)
+      alert(`Erro ao gerar sprint: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   async function handleRefreshMonthly(yearMonth?: string) {
     setRefreshing(true)
     setSuccessHint(null)
@@ -200,6 +225,20 @@ export function RelatoriosView() {
             {refreshing
               ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /></>
               : <><RefreshCw size={12} /> Monthly</>}
+          </button>
+          <button
+            onClick={handleRefreshSprint}
+            disabled={refreshing}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-secondary)',
+              fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {refreshing
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /></>
+              : <><RefreshCw size={12} /> Sprint</>}
           </button>
         </div>
       </div>

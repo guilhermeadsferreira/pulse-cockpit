@@ -46,6 +46,53 @@ export function CycleTab({ slug, person }: { slug: string; person: PersonConfig 
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle} />
           <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   style={inputStyle} />
         </div>
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 6 }}>
+          {[
+            {
+              label: 'Últimos 90 dias',
+              fn: () => {
+                const to = new Date()
+                const from = new Date(Date.now() - 90 * 86_400_000)
+                setDateFrom(from.toISOString().slice(0, 10))
+                setDateTo(to.toISOString().slice(0, 10))
+              },
+            },
+            {
+              label: 'Último trimestre',
+              fn: () => {
+                const now = new Date()
+                const q = Math.floor(now.getMonth() / 3)
+                const prevQ = q === 0 ? 3 : q - 1
+                const year = q === 0 ? now.getFullYear() - 1 : now.getFullYear()
+                const from = new Date(year, prevQ * 3, 1)
+                const to = new Date(year, prevQ * 3 + 3, 0)
+                setDateFrom(from.toISOString().slice(0, 10))
+                setDateTo(to.toISOString().slice(0, 10))
+              },
+            },
+            {
+              label: 'Últimos 6 meses',
+              fn: () => {
+                const to = new Date()
+                const from = new Date(Date.now() - 180 * 86_400_000)
+                setDateFrom(from.toISOString().slice(0, 10))
+                setDateTo(to.toISOString().slice(0, 10))
+              },
+            },
+          ].map(({ label, fn }) => (
+            <button
+              key={label}
+              onClick={fn}
+              style={{
+                padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)',
+                background: 'var(--surface-2)', color: 'var(--text-secondary)',
+                fontSize: 11, fontFamily: 'var(--font)', cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div style={{ padding: '16px 20px' }}>
           <button
             onClick={handleGenerate}

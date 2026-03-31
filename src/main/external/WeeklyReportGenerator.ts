@@ -15,11 +15,17 @@ interface WeeklyGitHubData {
   reviews: number
 }
 
+interface WeeklyPreviousData {
+  commits30d?: number
+  prsMerged30d?: number
+}
+
 interface PersonWeeklyData {
   nome: string
   slug: string
   snapshot: ExternalDataSnapshot | null
   weeklyGithub: WeeklyGitHubData
+  previous: WeeklyPreviousData
 }
 
 const MESES = [
@@ -76,11 +82,24 @@ export class WeeklyReportGenerator {
         log.warn('falha ao buscar dados GitHub da semana', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
       }
 
+      // Load previous month data for trend indicators
+      const previous: WeeklyPreviousData = {}
+      const historico = this.externalPass.loadHistorico(person.slug)
+      if (historico) {
+        const months = Object.keys(historico).sort().reverse()
+        if (months.length > 0) {
+          const prev = historico[months[0]]
+          previous.commits30d = prev.github?.commits30d
+          previous.prsMerged30d = prev.github?.prsMerged30d
+        }
+      }
+
       personReports.push({
         nome: person.nome,
         slug: person.slug,
         snapshot,
         weeklyGithub,
+        previous,
       })
 
       await sleep(200)
@@ -180,8 +199,11 @@ export class WeeklyReportGenerator {
         totalIssuesClosed += jira.issuesFechadasSprint
         totalSP += jira.storyPointsSprint
       }
-      lines.push(`- Commits: **${weekly.commits}**`)
-      lines.push(`- PRs merged: **${weekly.prsMerged}**`)
+      // Weekly avg from 30d rolling snapshot for trend comparison
+      const weeklyAvgCommits = report.previous.commits30d != null ? report.previous.commits30d / 4.3 : undefined
+      const weeklyAvgPRs = report.previous.prsMerged30d != null ? report.previous.prsMerged30d / 4.3 : undefined
+      lines.push(`- Commits: **${weekly.commits}**${formatTrend(weekly.commits, weeklyAvgCommits, 'vs avg/semana anterior')}`)
+      lines.push(`- PRs merged: **${weekly.prsMerged}**${formatTrend(weekly.prsMerged, weeklyAvgPRs, 'vs avg/semana anterior')}`)
       lines.push(`- Code reviews: **${weekly.reviews}**`)
       totalCommits += weekly.commits
       totalPRs += weekly.prsMerged
@@ -268,4 +290,18 @@ export class WeeklyReportGenerator {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Returns a trend suffix string like " (↑15% vs avg/semana anterior)" or "".
+ * @param current - current period value
+ * @param previous - previous period value (may be undefined if no history)
+ * @param label - context label for the comparison period
+ */
+function formatTrend(current: number, previous: number | undefined, label: string): string {
+  if (previous == null || previous === 0) return ''
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (Math.abs(pct) <= 10) return ` (→ estável)`
+  const arrow = pct > 0 ? '↑' : '↓'
+  return ` (${arrow}${Math.abs(pct)}% ${label})`
 }

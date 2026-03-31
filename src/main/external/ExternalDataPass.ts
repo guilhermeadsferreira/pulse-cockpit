@@ -180,7 +180,7 @@ export class ExternalDataPass {
       previousGithub: previous?.github ?? null,
     }
 
-    const insights = analyze(analysisInput)
+    const insights = analyze(analysisInput, undefined, person.nivel)
 
     return {
       jira: jiraMetrics,
@@ -244,6 +244,21 @@ export class ExternalDataPass {
 
     mkdirSync(join(this.workspacePath, 'pessoas', slug), { recursive: true })
     writeFileSync(externalPath, yaml.dump(existing, { lineWidth: 120, quotingType: '"' }), 'utf-8')
+  }
+
+  /**
+   * Returns the historico map from external_data.yaml for trend comparisons.
+   * Keys are YYYY-MM strings, values contain summarized jira/github metrics.
+   */
+  loadHistorico(slug: string): ExternalDataHistory['historico'] | null {
+    const externalPath = join(this.workspacePath, 'pessoas', slug, 'external_data.yaml')
+    if (!existsSync(externalPath)) return null
+    try {
+      const data = yaml.load(readFileSync(externalPath, 'utf-8')) as ExternalDataHistory
+      return data.historico ?? null
+    } catch {
+      return null
+    }
   }
 
   private loadPreviousMonth(slug: string): { jira: Partial<JiraPersonMetrics> | null; github: Partial<GitHubPersonMetrics> | null } | null {

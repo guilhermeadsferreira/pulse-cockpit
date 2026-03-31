@@ -19,10 +19,11 @@ export interface AgendaPromptParams {
   sinaisTerceiros?:  string
   pdiEstruturado?:   string
   externalData?:     string
+  demandasGestor?:   string
 }
 
 export function buildAgendaPrompt(params: AgendaPromptParams): string {
-  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '' } = params
+  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '', demandasGestor } = params
 
   const pautasSection = pautasAnteriores.length > 0
     ? `\n## Histórico de pautas anteriores\n${pautasAnteriores.map(p => `### Pauta de ${p.date}\n${p.content}`).join('\n\n')}\n`
@@ -54,6 +55,10 @@ export function buildAgendaPrompt(params: AgendaPromptParams): string {
     acoesSection += `\n## Ações em aberto (Action Loop)\n${acoesNormais.map(formatAction).join('\n')}\n`
   }
 
+  const demandasSection = demandasGestor
+    ? `\n## Demandas do gestor para esta 1:1\n${demandasGestor}\n`
+    : ''
+
   const insightsSection = insightsRecentes
     ? `\n## Insights recentes de 1:1\n${insightsRecentes}\n`
     : ''
@@ -67,7 +72,7 @@ export function buildAgendaPrompt(params: AgendaPromptParams): string {
     : ''
 
   const externalDataSection = externalData
-    ? `\n## Dados Externos (métricas objetivas)\n${externalData}\n`
+    ? `\n## Dados Externos (métricas objetivas)\n${externalData}\n> Contagens de commits e PRs são contexto de volume — não refletem impacto ou qualidade. Use-as para formular perguntas, não como evidência de desempenho.\n`
     : ''
 
   const staleWarning = dadosStale
@@ -86,7 +91,7 @@ ${configYaml}
 
 ## Perfil vivo atual
 ${perfilMd}
-${pautasSection}${acoesSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
+${pautasSection}${acoesSection}${demandasSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
 ## Sua tarefa
 
 Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais de terceiros e PDI, gere uma pauta completa e estruturada para o próximo 1:1. Retorne APENAS um JSON válido (sem texto antes ou depois):
@@ -96,6 +101,7 @@ Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais
   "temas": ["string"],
   "perguntas_sugeridas": ["string"],
   "alertas": ["string"],
+  "outros_alertas": ["string"],
   "reconhecimentos": ["string"]
 }
 
@@ -103,8 +109,9 @@ Regras:
 - "follow_ups": use DESCRIÇÃO COMPLETA e CONTEXTO das ações, não só texto resumido. Ações com risco de abandono (2+ ciclos sem menção) são PRIORIDADE MÁXIMA — devem ser os primeiros itens. Ações do gestor pendentes vão em seção separada como "prestar contas". Priorize as mais antigas.
 - "temas": assuntos recorrentes, pontos de atenção ou evolução de carreira que merecem discussão aprofundada. Conecte insights de 1:1 sobre carreira/PDI com perguntas sugeridas quando aplicável. Priorize pelo impacto.
 - "perguntas_sugeridas": 4 a 6 perguntas abertas, específicas e contextualizadas para esta pessoa. Sinais de terceiros não explorados devem gerar perguntas de validação (ex: "O Antonio mencionou X — como você vê isso?"). Insights de PDI conectam com perguntas de desenvolvimento. NUNCA use perguntas genéricas — baseie-se no perfil real. Use dados externos quantitativos (Jira, GitHub) para gerar perguntas com números concretos — ex: "Você tem ${openActions.length} ações abertas e 5 issues no Jira — como está gerenciando o workload?".
-- "alertas": pontos críticos que o gestor DEVE abordar (bloqueios, conflitos, risco de desengajamento, deadlines críticos, ações com risco de abandono, blockers do Jira). Array vazio se não houver urgências.
-- "reconhecimentos": conquistas e elogios recentes que merecem ser reconhecidos explicitamente na conversa. Reconhecimento público fortalece o vínculo. Array vazio se não houver.`
+- "alertas": máximo 3 alertas, priorizados por impacto e urgência (bloqueios, conflitos, risco de desengajamento, deadlines críticos, ações com risco de abandono, blockers do Jira). Selecione os 3 mais críticos. Array vazio se não houver urgências.
+- "outros_alertas": alertas relevantes que não couberam nos 3 principais — sem limite. Omitir (ou array vazio) se não há excedentes.
+- "reconhecimentos": conquistas que merecem ser mencionadas explicitamente na conversa. Priorize os últimos 14 dias; se não houver conquistas nesse período, use os últimos 30 dias; se não houver em 30 dias, retorne array vazio. Reconhecimento oportuno fortalece o vínculo.`
 }
 
 export interface AgendaAIResult {
@@ -112,6 +119,7 @@ export interface AgendaAIResult {
   temas:               string[]
   perguntas_sugeridas: string[]
   alertas:             string[]
+  outros_alertas?:     string[]
   reconhecimentos:     string[]
 }
 
@@ -126,6 +134,12 @@ export function renderAgendaMarkdown(nome: string, date: string, result: AgendaA
   if (result.alertas.length > 0) {
     lines.push(`## ⚠️ Alertas`)
     result.alertas.forEach(a => lines.push(`- ${a}`))
+    lines.push(``)
+  }
+
+  if (result.outros_alertas && result.outros_alertas.length > 0) {
+    lines.push(`### Outros alertas`)
+    result.outros_alertas.forEach(a => lines.push(`- ${a}`))
     lines.push(``)
   }
 

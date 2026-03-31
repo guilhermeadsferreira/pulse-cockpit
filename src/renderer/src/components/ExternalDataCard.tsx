@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
+import type { ExternalDataSnapshot } from '../types/ipc'
 
 interface ExternalDataCardProps {
   slug: string
 }
 
 export function ExternalDataCard({ slug }: ExternalDataCardProps) {
-  const [data, setData] = useState<string | null>(null)
+  const [data, setData] = useState<ExternalDataSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     const d = await window.api.external.getData(slug)
-    setData(d)
+    setData(d as ExternalDataSnapshot | null)
     setLoading(false)
   }, [slug])
 
@@ -50,7 +51,10 @@ export function ExternalDataCard({ slug }: ExternalDataCardProps) {
 
   if (!data) return null
 
-  const parsed = parseExternalData(data)
+  const jira = data.jira
+  const github = data.github
+  const insights = data.insights ?? []
+  const blockers = jira?.blockersAtivos?.length ?? 0
 
   return (
     <div style={{
@@ -65,9 +69,9 @@ export function ExternalDataCard({ slug }: ExternalDataCardProps) {
       }}>
         <span>Dados Externos</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {parsed.atualizadoEm && (
+          {data.atualizadoEm && (
             <span style={{ fontSize: 9, letterSpacing: '0.04em', color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>
-              {parsed.atualizadoEm}
+              {data.atualizadoEm}
             </span>
           )}
           <button
@@ -86,54 +90,63 @@ export function ExternalDataCard({ slug }: ExternalDataCardProps) {
       </div>
 
       {/* Jira */}
-      {parsed.jira && (
+      {jira && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             JIRA
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {parsed.jira.sprint && <DataRow label="Sprint" value={parsed.jira.sprint} />}
-            {parsed.jira.issuesAbertas != null && <DataRow label="Issues abertas" value={String(parsed.jira.issuesAbertas)} />}
-            {parsed.jira.issuesFechadas != null && <DataRow label="Issues fechadas" value={String(parsed.jira.issuesFechadas)} />}
-            {parsed.jira.storyPoints != null && <DataRow label="SP no sprint" value={String(parsed.jira.storyPoints)} />}
-            {parsed.jira.workload && <DataRow label="Workload" value={parsed.jira.workload} />}
-            {parsed.jira.bugsAtivos != null && parsed.jira.bugsAtivos > 0 && <DataRow label="Bugs ativos" value={String(parsed.jira.bugsAtivos)} highlight={false} />}
-            {parsed.jira.blockers > 0 && <DataRow label="Blockers" value={`${parsed.jira.blockers} ativo(s)`} highlight />}
+            {jira.sprintAtual?.nome && <DataRow label="Sprint" value={jira.sprintAtual.nome} />}
+            {jira.issuesAbertas != null && <DataRow label="Issues abertas" value={String(jira.issuesAbertas)} />}
+            {jira.issuesFechadasSprint != null && <DataRow label="Issues fechadas" value={String(jira.issuesFechadasSprint)} />}
+            {jira.storyPointsSprint != null && <DataRow label="SP no sprint" value={String(jira.storyPointsSprint)} />}
+            {jira.workloadScore && <DataRow label="Workload" value={jira.workloadScore} />}
+            {jira.bugsAtivos != null && jira.bugsAtivos > 0 && <DataRow label="Bugs ativos" value={String(jira.bugsAtivos)} highlight={false} />}
+            {blockers > 0 && <DataRow label="Blockers" value={`${blockers} ativo(s)`} highlight />}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: '1.4' }}>
+            Contagens não refletem impacto ou qualidade
           </div>
         </div>
       )}
 
       {/* GitHub */}
-      {parsed.github && (
+      {github && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             GITHUB
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {parsed.github.commits30d != null && <DataRow label="Commits (30d)" value={String(parsed.github.commits30d)} />}
-            {parsed.github.commitsPorSemana != null && <DataRow label="Commits/semana" value={String(parsed.github.commitsPorSemana)} />}
-            {parsed.github.prsMerged30d != null && <DataRow label="PRs merged" value={String(parsed.github.prsMerged30d)} />}
-            {parsed.github.prsAbertos != null && <DataRow label="PRs abertos" value={String(parsed.github.prsAbertos)} />}
-            {parsed.github.prsRevisados != null && <DataRow label="Reviews" value={String(parsed.github.prsRevisados)} />}
-            {parsed.github.tempoMedioAbertoDias != null && <DataRow label="PR aberto (dias)" value={parsed.github.tempoMedioAbertoDias.toFixed(1)} />}
-            {parsed.github.tempoMedioReviewDias != null && <DataRow label="Tempo review" value={parsed.github.tempoMedioReviewDias.toFixed(1)} />}
+            {github.commits30d != null && <DataRow label="Commits (30d)" value={String(github.commits30d)} />}
+            {github.commitsPorSemana != null && <DataRow label="Commits/semana" value={String(github.commitsPorSemana)} />}
+            {github.prsMerged30d != null && <DataRow label="PRs merged" value={String(github.prsMerged30d)} />}
+            {github.prsAbertos != null && <DataRow label="PRs abertos" value={String(github.prsAbertos)} />}
+            {github.prsRevisados != null && <DataRow label="Reviews" value={String(github.prsRevisados)} />}
+            {github.tempoMedioAbertoDias != null && <DataRow label="PR aberto (dias)" value={github.tempoMedioAbertoDias.toFixed(1)} />}
+            {github.tempoMedioReviewDias != null && <DataRow label="Tempo review" value={github.tempoMedioReviewDias.toFixed(1)} />}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: '1.4' }}>
+            Contagens não refletem impacto ou qualidade
           </div>
         </div>
       )}
 
       {/* Insights */}
-      {parsed.insights.length > 0 && (
+      {insights.length > 0 && (
         <div style={{ padding: '10px 16px' }}>
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             INSIGHTS CRUZADOS
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {parsed.insights.map((insight, i) => (
+            {insights.map((insight, i) => (
               <div key={i} style={{
-                fontSize: 11, color: insight.severidade === 'alta' ? 'var(--red)' : 'var(--text-secondary)',
+                fontSize: 11,
+                color: insight.tipo === 'destaque'
+                  ? 'var(--green)'
+                  : insight.severidade === 'alta' ? 'var(--red)' : 'var(--text-secondary)',
                 padding: '3px 0',
               }}>
-                {insight.severidade === 'alta' ? '⚠️' : insight.severidade === 'media' ? '🔶' : 'ℹ️'} {insight.descricao}
+                {insight.tipo === 'destaque' ? '✨' : insight.severidade === 'alta' ? '⚠️' : insight.severidade === 'media' ? '🔶' : 'ℹ️'} {insight.descricao}
               </div>
             ))}
           </div>
@@ -158,155 +171,3 @@ function DataRow({ label, value, highlight }: { label: string; value: string; hi
   )
 }
 
-interface ParsedExternalData {
-  atualizadoEm: string | null
-  jira: {
-    sprint: string | null
-    issuesAbertas: number | null
-    issuesFechadas: number | null
-    storyPoints: number | null
-    workload: string | null
-    bugsAtivos: number | null
-    blockers: number
-  } | null
-  github: {
-    commits30d: number | null
-    commitsPorSemana: number | null
-    prsMerged30d: number | null
-    prsAbertos: number | null
-    prsRevisados: number | null
-    tempoMedioAbertoDias: number | null
-    tempoMedioReviewDias: number | null
-  } | null
-  insights: Array<{ tipo: string; severidade: string; descricao: string }>
-}
-
-function parseExternalData(yamlContent: string): ParsedExternalData {
-  const result: ParsedExternalData = {
-    atualizadoEm: null,
-    jira: null,
-    github: null,
-    insights: [],
-  }
-
-  try {
-    const lines = yamlContent.split('\n')
-    let section: 'jira' | 'github' | 'insights' | null = null
-
-    for (let i = 0; i < lines.length; i++) {
-      const raw = lines[i]
-      const trimmed = raw.trim()
-
-      if (!trimmed) continue
-
-      if (trimmed.startsWith('atualizadoEm:')) {
-        result.atualizadoEm = trimmed.split(':').slice(1).join(':').trim().replace(/"/g, '')
-        continue
-      }
-
-      if (trimmed === 'jira:') { section = 'jira'; continue }
-      if (trimmed === 'github:') { section = 'github'; continue }
-      if (trimmed === 'insights:') { section = 'insights'; continue }
-
-      if (trimmed.match(/^[a-zA-Z]/) && !trimmed.startsWith('-') && !trimmed.startsWith('"') && !trimmed.startsWith("'")) {
-        if (trimmed !== 'jira:' && trimmed !== 'github:' && trimmed !== 'insights:' && !trimmed.startsWith('atualizadoEm')) {
-          section = null
-        }
-      }
-
-      if (section === 'jira') {
-        if (trimmed.startsWith('sprintAtual:')) {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          if (i + 1 < lines.length && lines[i + 1].trim().startsWith('nome:')) {
-            result.jira.sprint = lines[i + 1].trim().split(':').slice(1).join(':').trim().replace(/"/g, '')
-          }
-          continue
-        }
-        if (trimmed.startsWith('issuesAbertas:')) {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          result.jira.issuesAbertas = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('issuesFechadasSprint:')) {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          result.jira.issuesFechadas = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('storyPointsSprint:')) {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          result.jira.storyPoints = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('workloadScore:')) {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          result.jira.workload = trimmed.split(':').slice(1).join(':').trim().replace(/"/g, '')
-          continue
-        }
-        if (trimmed.startsWith('bugsAtivos:')) {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          result.jira.bugsAtivos = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed === '- key:') {
-          result.jira = result.jira ?? { sprint: null, issuesAbertas: null, issuesFechadas: null, storyPoints: null, workload: null, bugsAtivos: null, blockers: 0 }
-          result.jira.blockers++
-          continue
-        }
-      }
-
-      if (section === 'github') {
-        if (trimmed.startsWith('commits30d:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.commits30d = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('commitsPorSemana:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.commitsPorSemana = parseFloat(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('prsMerged30d:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.prsMerged30d = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('prsAbertos:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.prsAbertos = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('prsRevisados:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.prsRevisados = parseInt(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('tempoMedioAbertoDias:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.tempoMedioAbertoDias = parseFloat(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-        if (trimmed.startsWith('tempoMedioReviewDias:')) {
-          result.github = result.github ?? { commits30d: null, commitsPorSemana: null, prsMerged30d: null, prsAbertos: null, prsRevisados: null, tempoMedioAbertoDias: null, tempoMedioReviewDias: null }
-          result.github.tempoMedioReviewDias = parseFloat(trimmed.split(':')[1].trim()) || 0
-          continue
-        }
-      }
-
-      if (section === 'insights' && trimmed.startsWith('- tipo:')) {
-        const tipo = trimmed.split(':')[1].trim().replace(/"/g, '')
-        let severidade = 'baixa'
-        let descricao = ''
-        for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-          const l = lines[j].trim()
-          if (l.startsWith('severidade:')) severidade = l.split(':')[1].trim().replace(/"/g, '')
-          if (l.startsWith('descricao:')) descricao = l.split(':').slice(1).join(':').trim().replace(/"/g, '')
-        }
-        if (descricao) result.insights.push({ tipo, severidade, descricao })
-      }
-    }
-  } catch {
-    // parse error — return what we have
-  }
-
-  return result
-}

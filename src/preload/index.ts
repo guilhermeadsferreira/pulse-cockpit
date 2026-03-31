@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('api', {
     list:    (slug: string)  => ipcRenderer.invoke('artifacts:list', slug),
     read:    (path: string)  => ipcRenderer.invoke('artifacts:read', path),
     feed:    ()              => ipcRenderer.invoke('artifacts:feed'),
+    open:    (slug: string, fileName: string) => ipcRenderer.invoke('artifacts:open', slug, fileName),
   },
 
   ai: {

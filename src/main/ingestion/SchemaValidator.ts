@@ -20,7 +20,7 @@ const REQUIRED_FIELDS: (keyof IngestionAIResult)[] = [
   'necessita_1on1',
   'alerta_estagnacao',
   'sinal_evolucao',
-  'sentimento_detectado',
+  'sentimentos',
   'nivel_engajamento',
   'confianca',
 ]
@@ -60,8 +60,33 @@ export function validateIngestionResult(data: unknown): ValidationResult {
     typeErrors.push(`indicador_saude inválido: "${obj.indicador_saude}"`)
   }
 
-  if (obj.sentimento_detectado && !['positivo', 'neutro', 'ansioso', 'frustrado', 'desengajado'].includes(obj.sentimento_detectado as string)) {
-    typeErrors.push(`sentimento_detectado inválido: "${obj.sentimento_detectado}"`)
+  // sentimentos: array of {valor, aspecto} objects
+  if (obj.sentimentos !== undefined) {
+    if (!Array.isArray(obj.sentimentos)) {
+      typeErrors.push('sentimentos deve ser array')
+    } else {
+      const validValores = ['positivo', 'neutro', 'ansioso', 'frustrado', 'desengajado']
+      for (let i = 0; i < (obj.sentimentos as unknown[]).length; i++) {
+        const s = (obj.sentimentos as Record<string, unknown>[])[i]
+        if (!s || typeof s !== 'object' || !('valor' in s) || !('aspecto' in s)) {
+          typeErrors.push(`sentimentos[${i}]: faltando valor ou aspecto`)
+        } else if (!validValores.includes(s.valor as string)) {
+          typeErrors.push(`sentimentos[${i}].valor inválido: "${s.valor}"`)
+        }
+      }
+    }
+  }
+  // pontos_de_atencao: each item must be {texto, frequencia}
+  if (Array.isArray(obj.pontos_de_atencao)) {
+    for (let i = 0; i < (obj.pontos_de_atencao as unknown[]).length; i++) {
+      const p = (obj.pontos_de_atencao as Record<string, unknown>[])[i]
+      if (typeof p === 'string') continue  // legacy string format — tolerate
+      if (!p || typeof p !== 'object' || !('texto' in p) || !('frequencia' in p)) {
+        typeErrors.push(`pontos_de_atencao[${i}]: faltando texto ou frequencia`)
+      } else if (!['primeira_vez', 'recorrente'].includes(p.frequencia as string)) {
+        typeErrors.push(`pontos_de_atencao[${i}].frequencia inválido: "${p.frequencia}"`)
+      }
+    }
   }
 
   if (obj.tipo && !['1on1', 'reuniao', 'daily', 'planning', 'retro', 'feedback', 'outro'].includes(obj.tipo as string)) {
@@ -100,7 +125,7 @@ export function validateIngestionResult(data: unknown): ValidationResult {
 }
 
 const CERIMONIA_SINAL_REQUIRED_FIELDS: (keyof CerimoniaSinalResult)[] = [
-  'sentimento_detectado',
+  'sentimentos',
   'nivel_engajamento',
   'indicador_saude',
   'motivo_indicador',
@@ -137,8 +162,21 @@ export function validateCerimoniaSinalResult(data: unknown): ValidationResult {
     if (isMissing) missingFields.push(field)
   }
 
-  if (obj.sentimento_detectado && !['positivo', 'neutro', 'ansioso', 'frustrado', 'desengajado'].includes(obj.sentimento_detectado as string)) {
-    typeErrors.push(`sentimento_detectado inválido: "${obj.sentimento_detectado}"`)
+  // sentimentos: array of {valor, aspecto}
+  if (obj.sentimentos !== undefined) {
+    if (!Array.isArray(obj.sentimentos)) {
+      typeErrors.push('sentimentos deve ser array')
+    } else {
+      const validValores = ['positivo', 'neutro', 'ansioso', 'frustrado', 'desengajado']
+      for (let i = 0; i < (obj.sentimentos as unknown[]).length; i++) {
+        const s = (obj.sentimentos as Record<string, unknown>[])[i]
+        if (!s || typeof s !== 'object' || !('valor' in s) || !('aspecto' in s)) {
+          typeErrors.push(`sentimentos[${i}]: faltando valor ou aspecto`)
+        } else if (!validValores.includes(s.valor as string)) {
+          typeErrors.push(`sentimentos[${i}].valor inválido: "${s.valor}"`)
+        }
+      }
+    }
   }
 
   if (obj.indicador_saude && !['verde', 'amarelo', 'vermelho'].includes(obj.indicador_saude as string)) {

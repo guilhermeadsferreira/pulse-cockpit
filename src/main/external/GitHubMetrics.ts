@@ -11,7 +11,6 @@ export interface GitHubPersonMetrics {
   prsRevisados: number
   commits30d: number
   commitsPorSemana: number
-  padraoHorario: { manha: number; tarde: number; noite: number }
   tamanhoMedioPR: { additions: number; deletions: number }
 }
 
@@ -28,7 +27,6 @@ const EMPTY_METRICS: GitHubPersonMetrics = {
   prsRevisados: 0,
   commits30d: 0,
   commitsPorSemana: 0,
-  padraoHorario: { manha: 0, tarde: 0, noite: 0 },
   tamanhoMedioPR: { additions: 0, deletions: 0 },
 }
 
@@ -62,7 +60,6 @@ export async function fetchGitHubMetrics(input: GitHubMetricsInput): Promise<Git
     const commits30d = commits.length
     const commitsPorSemana = Math.round((commits30d / 30) * 7 * 10) / 10
 
-    const padraoHorario = computeTimePattern(commits)
     const tamanhoMedioPR = computeAveragePRSize(mergedPRs.length > 0 ? mergedPRs : prs)
 
     return {
@@ -73,7 +70,6 @@ export async function fetchGitHubMetrics(input: GitHubMetricsInput): Promise<Git
       prsRevisados,
       commits30d,
       commitsPorSemana,
-      padraoHorario,
       tamanhoMedioPR,
     }
   } catch (err) {
@@ -119,20 +115,6 @@ function computeAverageReviewTime(prs: GitHubPR[], reviews: GitHubReview[]): num
 
   const avg = prReviewTimes.reduce((a, b) => a + b, 0) / prReviewTimes.length
   return Math.round(avg * 10) / 10
-}
-
-function computeTimePattern(commits: GitHubCommit[]): { manha: number; tarde: number; noite: number } {
-  const pattern = { manha: 0, tarde: 0, noite: 0 }
-
-  for (const commit of commits) {
-    if (!commit.date) continue
-    const hour = new Date(commit.date).getHours()
-    if (hour >= 6 && hour < 12) pattern.manha++
-    else if (hour >= 12 && hour < 18) pattern.tarde++
-    else pattern.noite++
-  }
-
-  return pattern
 }
 
 function computeAveragePRSize(prs: GitHubPR[]): { additions: number; deletions: number } {

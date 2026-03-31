@@ -207,6 +207,7 @@ export interface Action {
   concluidoEm?:     string | null
   fonteArtefato?:   string
   pdi_objetivo_ref?: string
+  contexto?:        string
 }
 
 export interface PerfilData {

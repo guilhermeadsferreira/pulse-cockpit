@@ -13,6 +13,8 @@ interface PersonSprintData {
   nome: string
   slug: string
   snapshot: ExternalDataSnapshot | null
+  previousCommits30d?: number
+  previousPrsMerged30d?: number
 }
 
 export class SprintReportGenerator {
@@ -50,10 +52,25 @@ export class SprintReportGenerator {
         log.warn('falha ao buscar dados para sprint report', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
       }
 
+      // Load previous month data for trend indicators (best effort)
+      let previousCommits30d: number | undefined
+      let previousPrsMerged30d: number | undefined
+      const historico = this.externalPass.loadHistorico(person.slug)
+      if (historico) {
+        const months = Object.keys(historico).sort().reverse()
+        if (months.length > 0) {
+          const prev = historico[months[0]]
+          previousCommits30d = prev.github?.commits30d
+          previousPrsMerged30d = prev.github?.prsMerged30d
+        }
+      }
+
       personData.push({
         nome: person.nome,
         slug: person.slug,
         snapshot,
+        previousCommits30d,
+        previousPrsMerged30d,
       })
 
       await sleep(200)
@@ -156,7 +173,10 @@ export class SprintReportGenerator {
     lines.push('| Pessoa | Issues | SP | PRs | Commits | Status |')
     lines.push('|--------|--------|----|----|---------|--------|')
     for (const row of tableRows) {
-      lines.push(`| ${row.nome} | ${row.issues} | ${row.sp} | ${row.prs} | ${row.commits} | ${row.status} |`)
+      const person = personData.find(p => p.nome === row.nome)
+      const commitsTrend = formatTrend(row.commits, person?.previousCommits30d, 'vs mês ant.')
+      const prsTrend = formatTrend(row.prs, person?.previousPrsMerged30d, 'vs mês ant.')
+      lines.push(`| ${row.nome} | ${row.issues} | ${row.sp} | ${row.prs}${prsTrend} | ${row.commits}${commitsTrend} | ${row.status} |`)
     }
     lines.push('')
 
@@ -184,4 +204,12 @@ export class SprintReportGenerator {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function formatTrend(current: number, previous: number | undefined, label: string): string {
+  if (previous == null || previous === 0) return ''
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (Math.abs(pct) <= 10) return ` (→)`
+  const arrow = pct > 0 ? '↑' : '↓'
+  return ` (${arrow}${Math.abs(pct)}% ${label})`
 }

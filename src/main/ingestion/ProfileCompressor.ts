@@ -5,10 +5,11 @@ import type { AppSettings } from '../registry/SettingsManager'
 import { buildCompressionPrompt, type CompressionAIResult } from '../prompts/compression.prompt'
 
 const SECTION_PATTERNS = {
-  resumo:     { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
-  atencao:    { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM BLOCO ATENCAO -->' },
-  conquistas: { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM BLOCO CONQUISTAS -->' },
-  temas:      { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM BLOCO TEMAS -->' },
+  resumo:              { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
+  resumos_anteriores:  { open: '<!-- BLOCO GERENCIADO PELA IA — histórico de resumos (max 3) -->',                close: '<!-- FIM BLOCO RESUMOS_ANTERIORES -->' },
+  atencao:             { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM BLOCO ATENCAO -->' },
+  conquistas:          { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM BLOCO CONQUISTAS -->' },
+  temas:               { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM BLOCO TEMAS -->' },
 }
 
 export class ProfileCompressor {
@@ -32,13 +33,15 @@ export class ProfileCompressor {
 
     const original = readFileSync(perfilPath, 'utf-8')
 
-    const resumoEvolutivo = this.extractBlock(original, 'resumo')
-    const pontosAtencao   = this.extractBlock(original, 'atencao')
-    const conquistas      = this.extractBlock(original, 'conquistas')
-    const temas           = this.extractBlock(original, 'temas')
+    const resumoEvolutivo    = this.extractBlock(original, 'resumo')
+    const resumosAnteriores  = this.extractBlock(original, 'resumos_anteriores')
+    const pontosAtencao      = this.extractBlock(original, 'atencao')
+    const conquistas         = this.extractBlock(original, 'conquistas')
+    const temas              = this.extractBlock(original, 'temas')
 
     const prompt = buildCompressionPrompt({
       slug, totalArtefatos, resumoEvolutivo, pontosAtencao, conquistas, temas,
+      resumosAnteriores: resumosAnteriores || undefined,
     })
 
     const result = await runWithProvider('profileCompression', this.settings, prompt, {

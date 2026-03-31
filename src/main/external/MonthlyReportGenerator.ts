@@ -14,11 +14,17 @@ interface MonthlyGitHubData {
   reviews: number
 }
 
+interface MonthlyPreviousData {
+  commits30d?: number
+  prsMerged30d?: number
+}
+
 interface PersonMonthlyData {
   nome: string
   slug: string
   snapshot: ExternalDataSnapshot | null
   monthlyGithub: MonthlyGitHubData
+  previous: MonthlyPreviousData
 }
 
 const MESES = [
@@ -80,11 +86,24 @@ export class MonthlyReportGenerator {
         log.warn('falha ao buscar dados GitHub do mês', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
       }
 
+      // Load previous month data for trend indicators
+      const previous: MonthlyPreviousData = {}
+      const historico = this.externalPass.loadHistorico(person.slug)
+      if (historico) {
+        const months = Object.keys(historico).sort().reverse()
+        if (months.length > 0) {
+          const prev = historico[months[0]]
+          previous.commits30d = prev.github?.commits30d
+          previous.prsMerged30d = prev.github?.prsMerged30d
+        }
+      }
+
       personReports.push({
         nome: person.nome,
         slug: person.slug,
         snapshot,
         monthlyGithub,
+        previous,
       })
 
       await sleep(200)
@@ -169,8 +188,8 @@ export class MonthlyReportGenerator {
         totalIssuesClosed += jira.issuesFechadasSprint
         totalSP += jira.storyPointsSprint
       }
-      lines.push(`- Commits: **${monthly.commits}**`)
-      lines.push(`- PRs merged: **${monthly.prsMerged}**`)
+      lines.push(`- Commits: **${monthly.commits}**${formatTrend(monthly.commits, report.previous.commits30d, 'vs mês anterior')}`)
+      lines.push(`- PRs merged: **${monthly.prsMerged}**${formatTrend(monthly.prsMerged, report.previous.prsMerged30d, 'vs mês anterior')}`)
       lines.push(`- Code reviews: **${monthly.reviews}**`)
       totalCommits += monthly.commits
       totalPRs += monthly.prsMerged
@@ -260,4 +279,12 @@ export class MonthlyReportGenerator {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function formatTrend(current: number, previous: number | undefined, label: string): string {
+  if (previous == null || previous === 0) return ''
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (Math.abs(pct) <= 10) return ` (→ estável)`
+  const arrow = pct > 0 ? '↑' : '↓'
+  return ` (${arrow}${Math.abs(pct)}% ${label})`
 }

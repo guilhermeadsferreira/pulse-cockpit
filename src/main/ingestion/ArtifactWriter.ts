@@ -7,15 +7,16 @@ import { ActionRegistry } from '../registry/ActionRegistry'
 import { CURRENT_SCHEMA_VERSION } from '../migration/ProfileMigration'
 
 const SECTION = {
-  resumo:          { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
-  acoes:           { open: '<!-- BLOCO GERENCIADO PELA IA — append de novos itens -->',                        close: '<!-- FIM BLOCO ACOES -->' },
-  atencao:         { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM BLOCO ATENCAO -->' },
-  conquistas:      { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM BLOCO CONQUISTAS -->' },
-  temas:           { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM BLOCO TEMAS -->' },
-  historico:       { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas, nunca reescrito -->',               close: '<!-- FIM BLOCO HISTORICO -->' },
-  saude_historico:   { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (histórico de saúde) -->',           close: '<!-- FIM BLOCO SAUDE -->' },
-  insights_1on1:    { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (insights 1on1) -->',              close: '<!-- FIM BLOCO INSIGHTS_1ON1 -->' },
-  sinais_terceiros: { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (sinais terceiros) -->',           close: '<!-- FIM BLOCO SINAIS_TERCEIROS -->' },
+  resumo:              { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
+  resumos_anteriores:  { open: '<!-- BLOCO GERENCIADO PELA IA — histórico de resumos (max 3) -->',                close: '<!-- FIM BLOCO RESUMOS_ANTERIORES -->' },
+  acoes:               { open: '<!-- BLOCO GERENCIADO PELA IA — append de novos itens -->',                        close: '<!-- FIM BLOCO ACOES -->' },
+  atencao:             { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas -->',                                close: '<!-- FIM BLOCO ATENCAO -->' },
+  conquistas:          { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (conquistas) -->',                   close: '<!-- FIM BLOCO CONQUISTAS -->' },
+  temas:               { open: '<!-- BLOCO GERENCIADO PELA IA — lista deduplicada, substituída a cada ingestão -->', close: '<!-- FIM BLOCO TEMAS -->' },
+  historico:           { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas, nunca reescrito -->',               close: '<!-- FIM BLOCO HISTORICO -->' },
+  saude_historico:     { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (histórico de saúde) -->',           close: '<!-- FIM BLOCO SAUDE -->' },
+  insights_1on1:       { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (insights 1on1) -->',                close: '<!-- FIM BLOCO INSIGHTS_1ON1 -->' },
+  sinais_terceiros:    { open: '<!-- BLOCO GERENCIADO PELA IA — append apenas (sinais terceiros) -->',             close: '<!-- FIM BLOCO SINAIS_TERCEIROS -->' },
 }
 
 /**
@@ -45,6 +46,7 @@ export class ArtifactWriter {
     const participantes = result.participantes_nomes ?? []
 
     const confianca = result.confianca
+    const sentimentosStr = serializeSentimentos(result)
     const lines: string[] = [
       `---`,
       `tipo: ${tipo}`,
@@ -52,6 +54,7 @@ export class ArtifactWriter {
       `pessoa: ${slug}`,
       `saude: ${indicador_saude}`,
       `confianca: ${confianca}`,
+      ...(sentimentosStr ? [`sentimentos: ${sentimentosStr}`] : []),
       `---`,
       ``,
       `# ${titulo}`,
@@ -78,7 +81,7 @@ export class ArtifactWriter {
 
     if (pontos_de_atencao.length > 0) {
       lines.push(`## Pontos de Atenção`)
-      pontos_de_atencao.forEach((p) => lines.push(`- ${p}`))
+      pontos_de_atencao.forEach((p) => lines.push(`- ${formatPontoAtencao(p)}`))
       lines.push(``)
     }
 
@@ -163,10 +166,11 @@ export class ArtifactWriter {
       const prazo = a.prazo_iso ? ` até ${a.prazo_iso}` : ''
       return `- [ ] **${a.responsavel}:** ${a.descricao}${prazo}`
     }).join('\n') || '- [ ] (sem ações comprometidas)'
-    const atencaoLines = result.pontos_de_atencao.map((p) => `- **${today}:** ${p}`).join('\n') || ''
+    const atencaoLines = result.pontos_de_atencao.map((p) => `- **${today}:** ${formatPontoAtencao(p)}`).join('\n') || ''
     const elogioLines  = result.elogios_e_conquistas.map((e) => `- **${today}:** ${e}`).join('\n') || ''
     const temasLines   = result.temas_atualizados.map((t) => `- ${t}`).join('\n') || ''
 
+    const sentimentosStr = serializeSentimentos(result)
     return `---
 slug: "${slug}"
 schema_version: ${CURRENT_SCHEMA_VERSION}
@@ -195,6 +199,10 @@ ${SECTION.resumo.open}
 ${result.resumo_evolutivo}
 ${SECTION.resumo.close}
 
+## Resumos Anteriores
+${SECTION.resumos_anteriores.open}
+${SECTION.resumos_anteriores.close}
+
 ## Ações Pendentes
 ${SECTION.acoes.open}
 ${acoesLines}
@@ -222,7 +230,7 @@ ${SECTION.historico.close}
 
 ## Histórico de Saúde
 ${SECTION.saude_historico.open}
-- ${result.data_artefato} | ${result.indicador_saude} | ${result.motivo_indicador}
+- ${result.data_artefato} | ${result.indicador_saude} | ${result.motivo_indicador}${sentimentosStr ? ` | [${sentimentosStr}]` : ''}
 ${SECTION.saude_historico.close}
 
 ## Insights de 1:1
@@ -245,6 +253,9 @@ ${SECTION.sinais_terceiros.close}
     // 1. Update frontmatter
     let updated = this.updateFrontmatter(existing, result, now)
 
+    // 1.5. Archive current resumo before overwriting it
+    updated = this.archiveCurrentResumo(updated, today)
+
     // 2. Replace Resumo Evolutivo (full replace)
     updated = this.replaceBlock(updated, 'resumo', result.resumo_evolutivo)
 
@@ -263,7 +274,7 @@ ${SECTION.sinais_terceiros.close}
       updated = this.markResolvedPoints(updated, resolvidos, today)
     }
     if (result.pontos_de_atencao.length > 0) {
-      const newLines = result.pontos_de_atencao.map((p) => `- **${today}:** ${p}`).join('\n')
+      const newLines = result.pontos_de_atencao.map((p) => `- **${today}:** ${formatPontoAtencao(p)}`).join('\n')
       updated = this.appendToBlock(updated, 'atencao', newLines)
     }
 
@@ -282,7 +293,8 @@ ${SECTION.sinais_terceiros.close}
     updated = this.appendToBlock(updated, 'historico', histLine)
 
     // 8. Append Histórico de Saúde — adds section if not present (e.g. older perfis)
-    const saudeLine = `- ${result.data_artefato} | ${result.indicador_saude} | ${result.motivo_indicador}`
+    const sentimentosStr = serializeSentimentos(result)
+    const saudeLine = `- ${result.data_artefato} | ${result.indicador_saude} | ${result.motivo_indicador}${sentimentosStr ? ` | [${sentimentosStr}]` : ''}`
     if (updated.includes(SECTION.saude_historico.open)) {
       updated = this.appendToBlock(updated, 'saude_historico', saudeLine)
     } else {
@@ -290,6 +302,50 @@ ${SECTION.sinais_terceiros.close}
     }
 
     return updated
+  }
+
+  /**
+   * Archives the current Resumo Evolutivo into the resumos_anteriores block (max 3 entries)
+   * before it gets overwritten by the next ingestion pass.
+   *
+   * - If the block already exists: prepend new dated entry, keep latest 3.
+   * - If the block doesn't exist (older perfis): inject it right after FIM BLOCO RESUMO.
+   * - If the current resumo is empty: no-op (nothing to archive).
+   */
+  private archiveCurrentResumo(content: string, today: string): string {
+    const { open: rOpen, close: rClose } = SECTION.resumo
+    const { open: hOpen, close: hClose } = SECTION.resumos_anteriores
+
+    // Extract current resumo text
+    const escapedROpen  = rOpen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const escapedRClose = rClose.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const resumoRe = new RegExp(`${escapedROpen}\n([\\s\\S]*?)\n${escapedRClose}`)
+    const resumoMatch = content.match(resumoRe)
+    if (!resumoMatch || !resumoMatch[1].trim()) return content
+
+    const currentResumo = resumoMatch[1].trim()
+    const newEntry = `### ${today}\n${currentResumo}`
+
+    if (content.includes(hOpen)) {
+      // Block exists — prepend entry and keep max 3
+      const escapedHOpen  = hOpen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const escapedHClose = hClose.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp(`(${escapedHOpen}\n)([\\s\\S]*?)(${escapedHClose})`)
+      return content.replace(re, (_match, open, body, close) => {
+        const existing = body.trim()
+        const entries = existing
+          ? existing.split(/(?=### \d{4}-\d{2}-\d{2})/).map((e) => e.trim()).filter(Boolean)
+          : []
+        const allEntries = [newEntry, ...entries].slice(0, 3)
+        return `${open}${allEntries.join('\n\n')}\n${close}`
+      })
+    } else {
+      // Block doesn't exist — inject after FIM BLOCO RESUMO
+      return content.replace(
+        `${rClose}\n`,
+        `${rClose}\n\n## Resumos Anteriores\n${hOpen}\n${newEntry}\n${hClose}\n`,
+      )
+    }
   }
 
   private updateFrontmatter(content: string, result: IngestionAIResult, now: string): string {
@@ -318,13 +374,24 @@ ${SECTION.sinais_terceiros.close}
       fm = fm.replace(/ultimo_1on1:.*/, `ultimo_1on1: "${result.data_artefato}"`)
     }
 
-    // saude + ultima_confianca
-    fm = fm.replace(/saude:.*/, `saude: "${result.indicador_saude}"`)
+    // saude + ultima_confianca + saude_anterior (audit trail de transições)
+    const currentSaudeMatch = /saude:\s*"(\w+)"/.exec(fm)
+    const currentSaude = currentSaudeMatch?.[1] ?? null
+    const novaSaude = result.indicador_saude
+    if (currentSaude && currentSaude !== novaSaude) {
+      // Saúde mudou — registrar saude_anterior para contexto do deep pass
+      if (/saude_anterior:/.test(fm)) {
+        fm = fm.replace(/saude_anterior:.*/, `saude_anterior: "${currentSaude}"`)
+      } else {
+        fm = fm.replace(/saude:.*/, `saude: "${novaSaude}"\nsaude_anterior: "${currentSaude}"`)
+      }
+    }
+    fm = fm.replace(/saude:.*/, `saude: "${novaSaude}"`)
     const confianca = result.confianca
     if (/ultima_confianca:/.test(fm)) {
       fm = fm.replace(/ultima_confianca:.*/, `ultima_confianca: "${confianca}"`)
     } else {
-      fm = fm.replace(/saude:.*/, `saude: "${result.indicador_saude}"\nultima_confianca: "${confianca}"`)
+      fm = fm.replace(/saude:.*/, `saude: "${novaSaude}"\nultima_confianca: "${confianca}"`)
     }
 
     // necessita_1on1 + motivo_1on1
@@ -488,10 +555,26 @@ ${SECTION.sinais_terceiros.close}
       }
     }
 
+    // 4. Append auto_percepcao to insights when present
+    if (result.auto_percepcao) {
+      const autoPercLine = `**${today}:** [auto_percepcao] ${result.auto_percepcao} *(alta)*`
+      if (updated.includes(SECTION.insights_1on1.open)) {
+        updated = this.appendToBlock(updated, 'insights_1on1', autoPercLine)
+      }
+    }
+
+    // 5. Append PDI progress to insights when observed
+    if (result.pdi_update?.progresso_observado) {
+      const pdiLine = `**${today}:** [pdi] ${result.pdi_update.progresso_observado} *(alta)*`
+      if (updated.includes(SECTION.insights_1on1.open)) {
+        updated = this.appendToBlock(updated, 'insights_1on1', pdiLine)
+      }
+    }
+
     writeFileSync(tmpPath, updated, 'utf-8')
     renameSync(tmpPath, perfilPath)
 
-    // 4. Append resumo_executivo_rh to the artifact file
+    // 5. Append resumo_executivo_rh to the artifact file
     if (result.resumo_executivo_rh) {
       const artifactPath = join(this.pessoasDir, slug, 'historico', artifactFileName)
       if (existsSync(artifactPath)) {
@@ -669,18 +752,26 @@ ${SECTION.sinais_terceiros.close}
     // ultima_atualizacao — always update
     fm = fm.replace(/ultima_atualizacao:.*/, `ultima_atualizacao: "${now}"`)
 
-    // saude + ultima_confianca
+    // saude + ultima_confianca + saude_anterior (audit trail de transições)
     // Sinal de baixa confiança nunca piora o indicador atual — apenas melhora ou mantém.
     const saudeOrder: Record<string, number> = { verde: 0, amarelo: 1, vermelho: 2 }
     const currentSaude = /saude:\s*"(\w+)"/.exec(fm)?.[1] ?? 'verde'
     const shouldUpdateSaude = sinal.confianca !== 'baixa' ||
       (saudeOrder[sinal.indicador_saude] ?? 0) < (saudeOrder[currentSaude] ?? 0)
     if (shouldUpdateSaude) {
+      const novaSaudeCerimonia = sinal.indicador_saude
+      if (currentSaude !== novaSaudeCerimonia) {
+        if (/saude_anterior:/.test(fm)) {
+          fm = fm.replace(/saude_anterior:.*/, `saude_anterior: "${currentSaude}"`)
+        } else {
+          fm = fm.replace(/saude:.*/, `saude: "${currentSaude}"\nsaude_anterior: "${currentSaude}"`)
+        }
+      }
       if (/ultima_confianca:/.test(fm)) {
-        fm = fm.replace(/saude:.*/, `saude: "${sinal.indicador_saude}"`)
+        fm = fm.replace(/saude:.*/, `saude: "${novaSaudeCerimonia}"`)
         fm = fm.replace(/ultima_confianca:.*/, `ultima_confianca: "${sinal.confianca}"`)
       } else {
-        fm = fm.replace(/saude:.*/, `saude: "${sinal.indicador_saude}"\nultima_confianca: "${sinal.confianca}"`)
+        fm = fm.replace(/saude:.*/, `saude: "${novaSaudeCerimonia}"\nultima_confianca: "${sinal.confianca}"`)
       }
     }
 
@@ -725,6 +816,31 @@ ${SECTION.sinais_terceiros.close}
 }
 
 /**
+ * Serializes sentimentos array to a compact string for storage.
+ * Handles both new format ({valor, aspecto}) and legacy single-value format.
+ * Returns empty string if no sentimentos available.
+ */
+function serializeSentimentos(result: IngestionAIResult): string {
+  if (result.sentimentos?.length) {
+    return result.sentimentos.map(s => `${s.valor}/${s.aspecto}`).join(', ')
+  }
+  if (result.sentimento_detectado) {
+    return `${result.sentimento_detectado}/geral`
+  }
+  return ''
+}
+
+/**
+ * Formats a PontoAtencao for markdown output.
+ * Appends [recorrente] badge when frequencia is 'recorrente'.
+ * Accepts legacy string format for backward compat.
+ */
+function formatPontoAtencao(p: import('../prompts/ingestion.prompt').PontoAtencao | string): string {
+  if (typeof p === 'string') return p
+  return p.frequencia === 'recorrente' ? `[recorrente] ${p.texto}` : p.texto
+}
+
+/**
  * Strips date prefix, markdown markers and normalizes whitespace for point matching.
  * Input:  "- **2026-03-10:** Dificuldade com comunicação no time A"
  * Output: "dificuldade com comunicação no time a"
@@ -739,6 +855,7 @@ function normalizePointText(text: string): string {
     .replace(/^\s*-\s*/, '')                         // leading "- "
     .replace(/\*\*\d{4}-\d{2}-\d{2}:\*\*\s*/i, '')  // "**YYYY-MM-DD:** "
     .replace(/\*\*/g, '')                             // bold markers
+    .replace(/\[recorrente\]\s*/gi, '')               // frequency badge
     .toLowerCase()
     .trim()
 }

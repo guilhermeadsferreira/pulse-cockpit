@@ -1,3 +1,6 @@
+import type { IndicadorSaude, NivelConfianca, SentimentoDetectado, NivelEngajamento, SentimentoItem } from './constants'
+import { NECESSITA_1ON1_REGRA } from './constants'
+
 export interface CerimoniaSinalPromptParams {
   teamRegistry: string        // serializeForPrompt() output
   pessoaNome: string          // nome completo da pessoa alvo
@@ -11,9 +14,11 @@ export interface CerimoniaSinalPromptParams {
 }
 
 export interface CerimoniaSinalResult {
-  sentimento_detectado: 'positivo' | 'neutro' | 'ansioso' | 'frustrado' | 'desengajado'
-  nivel_engajamento: 1 | 2 | 3 | 4 | 5
-  indicador_saude: 'verde' | 'amarelo' | 'vermelho'
+  sentimentos: SentimentoItem[]
+  /** @deprecated use sentimentos */
+  sentimento_detectado?: SentimentoDetectado
+  nivel_engajamento: NivelEngajamento
+  indicador_saude: IndicadorSaude
   motivo_indicador: string
   soft_skills_observadas: string[]
   hard_skills_observadas: string[]
@@ -25,7 +30,7 @@ export interface CerimoniaSinalResult {
   evidencia_evolucao: string | null
   necessita_1on1: boolean
   motivo_1on1: string | null
-  confianca: 'alta' | 'media' | 'baixa'
+  confianca: NivelConfianca
   resumo_evolutivo: string | null
 }
 
@@ -72,6 +77,13 @@ REGRAS OBRIGATÓRIAS:
 - Analise apenas o que ${pessoaNome} disse, fez ou demonstrou — não o que outros disseram sobre ela
 - Se a pessoa não aparece ou tem participação mínima: retorne arrays vazios, confianca "baixa", nivel_engajamento 1 ou 2
 - Não confunda participação com simples presença — estar listado como participante sem falar não é engajamento
+
+**Expectativas mínimas por tipo de cerimônia (calibre `nivel_engajamento` e `indicador_saude` com base nisso):**
+- **daily**: qualquer atualização de status — mesmo breve — conta como participação. Silêncio total é sinal.
+- **planning**: espera-se que a pessoa comente sobre itens do backlog relevantes ao seu trabalho, faça estimativas ou perguntas. Só ouvir sem reagir é participação mínima.
+- **retro**: espera-se pelo menos uma perspectiva própria (positiva ou de melhoria). Concordar com tudo sem contribuição original é sinal de baixo engajamento.
+- **review**: espera-se demonstração técnica ou comentário técnico fundamentado. Presença passiva conta pouco.
+- **reuniao/outro**: avalie pela natureza e relevância para a pessoa. Se o assunto era diretamente sobre sua área e ela não contribuiu, registre.
 
 **Qualidade textual:**
 - Cada item deve ser uma frase completa e autônoma, compreensível sem ler a cerimônia
@@ -125,15 +137,15 @@ ${perfilMdRaw ? `A pessoa tem pontos de atenção e temas recorrentes no perfil.
 "temas_detectados": temas recorrentes identificados (ex: "comunicação assertiva", "liderança técnica", "gestão de tempo").
   Use esses para enriquecer os Temas Recorrentes do perfil.
 
-"sentimento_detectado": estado emocional predominante observado. Um de: "positivo", "neutro", "ansioso", "frustrado", "desengajado". Use "neutro" se não há sinais claros.
+"sentimentos": array de objetos com estado emocional e aspecto. Cada objeto: {"valor": "positivo|neutro|ansioso|frustrado|desengajado", "aspecto": "ex: carreira, entrega, relacionamento, pessoal, geral"}. Use múltiplos itens quando sentimentos distintos coexistem em aspectos diferentes. Se não há sinais claros, use [{"valor": "neutro", "aspecto": "geral"}]. Array nunca vazio.
 
 "nivel_engajamento": 1 (ausente/silencioso) a 5 (protagonizou a cerimônia). Baseie-se em quantidade e qualidade das contribuições.
 
-"indicador_saude": baseado EXCLUSIVAMENTE no que foi observado NESTA cerimônia. "verde" = engajamento saudável, contribuições positivas. "amarelo" = sinais leves de preocupação. "vermelho" = sinal grave e inequívoco.
+"indicador_saude": baseado EXCLUSIVAMENTE no que foi observado NESTA cerimônia. "verde" = engajamento saudável, contribuições positivas. "amarelo" = sinais leves de preocupação. "vermelho" = sinal grave e inequívoco. CALIBRE pelo cargo/nível (${pessoaCargo}): para pessoas em nível sênior ou de liderança, o bar de "verde" é mais alto — espera-se contribuição ativa, tomada de posição e influência nas discussões. Para níveis júnior/pleno em início de trajetória, participação mais passiva com sinais de aprendizado pode ser "verde". Mesmos comportamentos podem ter indicadores diferentes dependendo do nível.
 
 "motivo_indicador": 1 frase explicando o indicador com base nesta cerimônia.
 
-"necessita_1on1": true SOMENTE para sinais graves e inequívocos — conflito interpessoal explícito, crise declarada, bloqueio crítico sem resolução. Sinais leves (pessoa quieta, participação abaixo do normal) NÃO justificam true — registre esses em pontos_de_desenvolvimento.
+"necessita_1on1": ${NECESSITA_1ON1_REGRA}
 
 "sinal_evolucao": true se há evidência clara de crescimento em relação ao histórico do perfil.
 
@@ -146,7 +158,7 @@ ${perfilMdRaw === null ? `"resumo_evolutivo": escreva 3–5 frases narrativas em
 
 JSON esperado:
 {
-  "sentimento_detectado": "positivo|neutro|ansioso|frustrado|desengajado",
+  "sentimentos": [{"valor": "positivo|neutro|ansioso|frustrado|desengajado", "aspecto": "string"}],
   "nivel_engajamento": 3,
   "indicador_saude": "verde|amarelo|vermelho",
   "motivo_indicador": "string",

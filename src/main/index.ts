@@ -154,6 +154,12 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('artifacts:open', (_event, slug: string, fileName: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const filePath = join(workspacePath, 'pessoas', slug, 'historico', fileName)
+    if (existsSync(filePath)) shell.openPath(filePath)
+  })
+
   // ── Resumo Executivo RH (último disponível nos artefatos 1:1) ──
   ipcMain.handle('people:last-resumo-rh', (_event, slug: string) => {
     const { workspacePath } = SettingsManager.load()
@@ -373,7 +379,14 @@ function registerIpcHandlers(): void {
       const externalMatch = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
       const externalData = externalMatch?.[1]?.trim() || ''
 
-      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData })
+      const demandasRaw = new DemandaRegistry(settings.workspacePath)
+        .list()
+        .filter((d) => d.pessoaSlug === slug && d.status === 'open')
+      const demandasGestor = demandasRaw.length > 0
+        ? demandasRaw.map((d) => `- ${d.descricao}${d.prazo ? ` (prazo: ${d.prazo})` : ''}${d.descricaoLonga ? ` — ${d.descricaoLonga}` : ''}`).join('\n')
+        : undefined
+
+      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData, demandasGestor })
       const result = await runWithProvider('agendaGeneration', settings, prompt, {
         claudeBinPath: settings.claudeBinPath,
         claudeTimeoutMs: 90_000,

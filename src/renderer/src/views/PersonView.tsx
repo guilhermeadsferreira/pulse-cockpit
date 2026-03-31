@@ -1057,7 +1057,7 @@ function AcoesTab({
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {lideradoActions.map((a) => (
-              <ActionRow key={a.id} action={a} onUpdateStatus={onUpdateStatus} onDelete={onDelete} />
+              <ActionRow key={a.id} action={a} slug={personSlug} onUpdateStatus={onUpdateStatus} onDelete={onDelete} />
             ))}
           </div>
         </div>
@@ -1079,6 +1079,7 @@ function AcoesTab({
               <ActionRow
                 key={a.id}
                 action={a}
+                slug={personSlug}
                 onUpdateStatus={onUpdateStatus}
                 onDelete={onDelete}
                 onSendToDemandas={a.status === 'open' ? handleSendToDemandas : undefined}
@@ -1094,12 +1095,14 @@ function AcoesTab({
 
 function ActionRow({
   action: a,
+  slug,
   onUpdateStatus,
   onDelete,
   onSendToDemandas,
   sentToDemandas,
 }: {
   action: Action
+  slug: string
   onUpdateStatus: (id: string, status: 'open' | 'done' | 'cancelled') => Promise<void>
   onDelete: (id: string) => Promise<void>
   onSendToDemandas?: (action: Action) => Promise<void>
@@ -1132,6 +1135,11 @@ function ActionRow({
         }}>
           {a.descricao ?? a.texto}
         </div>
+        {a.contexto && (
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>
+            {a.contexto}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
           {a.responsavel && (
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
@@ -1144,9 +1152,16 @@ function ActionRow({
             </span>
           )}
           {a.fonteArtefato && (
-            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            <button
+              onClick={() => window.api.artifacts.open(slug, a.fonteArtefato!)}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)',
+                textDecoration: 'underline', textDecorationStyle: 'dotted',
+              }}
+            >
               {a.fonteArtefato}
-            </span>
+            </button>
           )}
           {a.criadoEm && (
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>

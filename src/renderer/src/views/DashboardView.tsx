@@ -100,6 +100,29 @@ export function DashboardView({ relacao = 'liderado' }: { relacao?: string }) {
     }
   }, [load])
 
+  const staleCount = people.filter((p) => perfis[p.slug]?.dados_stale).length
+
+  const today = new Date().toISOString().slice(0, 10)
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+  type Urgencia = { slug: string; nome: string; tipo: '1on1' | 'acao' | 'alerta'; label: string }
+  const urgencias: Urgencia[] = []
+  if (relacao === 'liderado') {
+    for (const p of people) {
+      const fm = perfis[p.slug] ?? {}
+      const actions = actionsMap[p.slug] ?? []
+      if (fm.necessita_1on1 && !fm.dados_stale) {
+        urgencias.push({ slug: p.slug, nome: p.nome, tipo: '1on1', label: fm.motivo_1on1 ?? '1:1 urgente' })
+      }
+      const acoesPrazo = actions.filter((a) => a.status === 'open' && a.prazo && a.prazo <= tomorrow)
+      for (const a of acoesPrazo) {
+        urgencias.push({ slug: p.slug, nome: p.nome, tipo: 'acao', label: `prazo: ${(a.descricao ?? a.texto).slice(0, 60)}` })
+      }
+      if (fm.saude === 'vermelho' && !fm.dados_stale) {
+        urgencias.push({ slug: p.slug, nome: p.nome, tipo: 'alerta', label: 'saúde crítica' })
+      }
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
@@ -147,6 +170,27 @@ export function DashboardView({ relacao = 'liderado' }: { relacao?: string }) {
               <EmptyState onAdd={() => navigate('person-form', { defaultRelacao: relacao })} />
             ) : people.length > 0 ? (
               <>
+                {/* Stale data banner — T-R10.3 */}
+                {staleCount > 0 && relacao === 'liderado' && (
+                  <div style={{
+                    background: 'rgba(100,120,160,0.08)', border: '1px solid rgba(100,120,160,0.2)',
+                    borderRadius: 6, padding: '8px 14px', marginBottom: 16,
+                    fontSize: 12, color: 'var(--text-secondary)',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    <AlertCircle size={13} />
+                    {staleCount} {staleCount === 1 ? 'pessoa sem' : 'pessoas sem'} dados há 30+ dias
+                  </div>
+                )}
+
+                {/* Urgências do dia — T-R10.1 */}
+                {urgencias.length > 0 && (
+                  <UrgenciasHoje
+                    urgencias={urgencias}
+                    onNavigate={(slug) => navigate('person', { slug })}
+                  />
+                )}
+
                 {/* Risk panel — only for liderados with signals */}
                 {relacao === 'liderado' && (
                   <TeamRiskPanel
@@ -408,6 +452,39 @@ function PersonCard({
               evolução
             </span>
           )}
+          {/* Tendência emocional */}
+          {(perfil as Record<string, unknown>).tendencia_emocional === 'deteriorando' && (
+            <span
+              title={(perfil as Record<string, unknown>).nota_tendencia as string ?? 'Tendência emocional em declínio'}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 600,
+                padding: '2px 7px', borderRadius: 20,
+                background: 'rgba(184,64,64,0.1)',
+                border: '1px solid rgba(184,64,64,0.3)',
+                color: 'var(--red)',
+                alignSelf: 'center', cursor: 'help',
+              }}
+            >
+              ↓ deteriorando
+            </span>
+          )}
+          {(perfil as Record<string, unknown>).tendencia_emocional === 'melhorando' && (
+            <span
+              title={(perfil as Record<string, unknown>).nota_tendencia as string ?? 'Tendência emocional positiva'}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 600,
+                padding: '2px 7px', borderRadius: 20,
+                background: 'rgba(40,140,80,0.1)',
+                border: '1px solid rgba(40,140,80,0.3)',
+                color: 'var(--green)',
+                alignSelf: 'center', cursor: 'help',
+              }}
+            >
+              ↑ melhorando
+            </span>
+          )}
         </div>
       )}
 
@@ -519,6 +596,65 @@ function DetectedRow({
       }}>
         <X size={11} />
       </button>
+    </div>
+  )
+}
+
+// ─── T-R10.1 — Urgências do dia ───────────────────────────────
+type UrgenciaItem = { slug: string; nome: string; tipo: '1on1' | 'acao' | 'alerta'; label: string }
+
+function UrgenciasHoje({
+  urgencias,
+  onNavigate,
+}: {
+  urgencias: UrgenciaItem[]
+  onNavigate: (slug: string) => void
+}) {
+  const visible = urgencias.slice(0, 5)
+  const hidden = urgencias.length - visible.length
+  const tipoColor: Record<UrgenciaItem['tipo'], string> = {
+    '1on1':   'rgba(100,120,200,0.18)',
+    'acao':   'rgba(192,135,58,0.18)',
+    'alerta': 'rgba(184,64,64,0.18)',
+  }
+  const tipoLabel: Record<UrgenciaItem['tipo'], string> = {
+    '1on1':   '1:1',
+    'acao':   'ação',
+    'alerta': 'risco',
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        fontSize: 10, fontWeight: 600, letterSpacing: '0.1em',
+        textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6,
+      }}>
+        Hoje
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {visible.map((u, i) => (
+          <button
+            key={i}
+            onClick={() => onNavigate(u.slug)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '4px 10px', borderRadius: 20,
+              background: tipoColor[u.tipo], border: 'none',
+              cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+              maxWidth: 280,
+            }}
+          >
+            <span style={{ fontWeight: 600, fontSize: 11, flexShrink: 0 }}>{u.nome}</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: 10, flexShrink: 0 }}>· {tipoLabel[u.tipo]}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.label}</span>
+          </button>
+        ))}
+        {hidden > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', alignSelf: 'center' }}>
+            +{hidden} mais
+          </span>
+        )}
+      </div>
     </div>
   )
 }

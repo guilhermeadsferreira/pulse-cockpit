@@ -26,6 +26,7 @@ declare global {
         list: (slug: string) => Promise<ArtifactMeta[]>
         read: (path: string) => Promise<string>
         feed: () => Promise<ArtifactFeedItem[]>
+        open: (slug: string, fileName: string) => Promise<void>
       }
 
       ingestion: {

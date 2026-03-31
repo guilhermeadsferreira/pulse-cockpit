@@ -2,7 +2,7 @@ import type { JiraPersonMetrics } from './JiraMetrics'
 import type { GitHubPersonMetrics } from './GitHubMetrics'
 
 export interface CrossInsight {
-  tipo: 'sobrecarga' | 'desalinhamento' | 'gap_comunicacao' | 'crescimento' | 'bloqueio' | 'risco_sprint'
+  tipo: 'sobrecarga' | 'desalinhamento' | 'gap_comunicacao' | 'crescimento' | 'bloqueio' | 'risco_sprint' | 'destaque'
   severidade: 'alta' | 'media' | 'baixa'
   descricao: string
   evidencia: string
@@ -37,8 +37,17 @@ const DEFAULT_THRESHOLDS: CrossAnalyzerThresholds = {
   risco_sprint_dias_restantes: 3,
 }
 
-export function analyze(input: CrossAnalyzerInput, thresholds?: Partial<CrossAnalyzerThresholds>): CrossInsight[] {
-  const t = { ...DEFAULT_THRESHOLDS, ...thresholds }
+const NIVEL_THRESHOLD_OVERRIDES: Record<string, Partial<CrossAnalyzerThresholds>> = {
+  junior:    { sobrecarga_issues: 3, prs_acumulando_count: 2 },
+  pleno:     { sobrecarga_issues: 5, prs_acumulando_count: 3 },
+  senior:    { sobrecarga_issues: 7, prs_acumulando_count: 4 },
+  staff:     { sobrecarga_issues: 10, prs_acumulando_count: 5 },
+  principal: { sobrecarga_issues: 10, prs_acumulando_count: 5 },
+}
+
+export function analyze(input: CrossAnalyzerInput, thresholds?: Partial<CrossAnalyzerThresholds>, nivel?: string): CrossInsight[] {
+  const nivelOverrides = nivel ? (NIVEL_THRESHOLD_OVERRIDES[nivel.toLowerCase()] ?? {}) : {}
+  const t = { ...DEFAULT_THRESHOLDS, ...nivelOverrides, ...thresholds }
   const insights: CrossInsight[] = []
 
   if (input.jira) {
@@ -49,6 +58,7 @@ export function analyze(input: CrossAnalyzerInput, thresholds?: Partial<CrossAna
 
   if (input.github) {
     insights.push(...analyzePRAccumulation(input.github, t))
+    insights.push(...analyzeHighlights(input.github))
   }
 
   if (input.jira && input.github) {
@@ -256,6 +266,42 @@ function analyzeActivityDrop(
       descricao: 'Nenhuma code review feita nos últimos 30 dias',
       evidencia: `GitHub: ${currReviews} reviews (30d) vs ${prevReviews} (mês anterior)`,
       acaoSugerida: 'Verificar se revisões estão acontecendo por outro canal ou se a participação caiu',
+    })
+  }
+
+  return insights
+}
+
+function analyzeHighlights(github: GitHubPersonMetrics): CrossInsight[] {
+  const insights: CrossInsight[] = []
+
+  if (github.prsMerged30d > 0 && github.tempoMedioAbertoDias < 1) {
+    insights.push({
+      tipo: 'destaque',
+      severidade: 'baixa',
+      descricao: `Ciclo de entrega rápido — ${github.prsMerged30d} PRs integrados em menos de 1 dia em média`,
+      evidencia: `GitHub: tempo médio até merge = ${github.tempoMedioAbertoDias} dias, ${github.prsMerged30d} PRs merged (30d)`,
+      acaoSugerida: 'Reconhecer agilidade no próximo 1:1',
+    })
+  }
+
+  if (github.prsRevisados >= 5) {
+    insights.push({
+      tipo: 'destaque',
+      severidade: 'baixa',
+      descricao: `Participação ativa em code reviews (${github.prsRevisados} reviews em 30d)`,
+      evidencia: `GitHub: ${github.prsRevisados} code reviews realizadas nos últimos 30 dias`,
+      acaoSugerida: 'Reconhecer contribuição ao time no próximo 1:1',
+    })
+  }
+
+  if (github.commitsPorSemana >= 10) {
+    insights.push({
+      tipo: 'destaque',
+      severidade: 'baixa',
+      descricao: `Velocity consistente — ${github.commitsPorSemana} commits/semana em média`,
+      evidencia: `GitHub: ${github.commits30d} commits (30d), média de ${github.commitsPorSemana}/semana`,
+      acaoSugerida: 'Manter ritmo — verificar se qualidade acompanha volume no próximo 1:1',
     })
   }
 
