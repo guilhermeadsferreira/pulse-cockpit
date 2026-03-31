@@ -84,7 +84,12 @@ Regras:
 - "pontos_de_desenvolvimento": áreas concretas de desenvolvimento identificadas, priorizadas por múltiplas fontes (artefatos + sinais de terceiros + insights de 1:1). Convergência de fontes = evidência forte.
 - "conclusao_para_calibracao": parágrafo conclusivo (3–5 frases) pronto para ser lido no fórum. Deve incluir recomendação clara: acima das expectativas / dentro das expectativas / abaixo das expectativas. Na accountability, mencione proporção de ações cumpridas vs abandonadas quando dados de follow-up estiverem disponíveis. Inclua evidências quantitativas de dados externos (Jira, GitHub) quando disponíveis — ex: velocity, tempo de ciclo, PRs merged, code reviews.
 - "flag_promovibilidade": "sim" se há evidências claras para promoção neste ciclo, "nao" se não há, "avaliar" se há potencial mas requer mais evidências ou mais tempo. Na promovibilidade, cruze: conquistas + feedback de terceiros + PDI + tendência emocional.
-- "evidencias_promovibilidade": 3–5 bullets de evidência concreta que sustentam o flag_promovibilidade. Cada bullet deve ser autônomo e citável no fórum: descreva um fato específico (entrega, comportamento, feedback de terceiro) com data ou contexto. Se flag_promovibilidade for "nao", liste as lacunas ou áreas que ainda precisam ser demonstradas para uma futura promoção. Nunca retorne array vazio — sempre há algo a dizer.`
+- "evidencias_promovibilidade": 3–5 bullets de evidência concreta que sustentam o flag_promovibilidade. Cada bullet deve ser autônomo e citável no fórum: descreva um fato específico (entrega, comportamento, feedback de terceiro) com data ou contexto.
+  QUANDO flag = "nao": liste as lacunas que precisam ser DEMONSTRADAS antes de uma promoção. Cada gap deve incluir: (a) o comportamento esperado para o nível, (b) o que foi observado (ou não observado) no ciclo, (c) evidência comportamental concreta. NUNCA use linguagem vaga como "falta experiência" ou "não está pronto" sem evidência. Exemplos de formato correto:
+  - "Liderança técnica (esperada para Senior): não liderou nenhuma iniciativa de arquitetura de ponta a ponta no ciclo — iniciativas de refactoring foram fragmentadas e sem ownership claro"
+  - "Influência no time (esperada para Staff): feedback de 1:1 e cerimônias indica que colega X não é buscado para decisões técnicas pelo time — padrão observado em 3+ artefatos"
+  QUANDO flag = "condicionado_a": liste o que já foi demonstrado (evidências positivas) E o que ainda falta (gap comportamental específico).
+  Nunca retorne array vazio — sempre há algo a dizer.`
 
   return {
     prompt,
