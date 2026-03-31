@@ -184,6 +184,7 @@ SUA TAREFA: Limpar e estruturar a transcrição abaixo, removendo ruído e preen
 - Preocupações, bloqueios, impedimentos
 - Objetivos, metas, entregas
 - Elogios e conquistas
+- Sinais emocionais coletivos relevantes: frustração com processo, excitação com resultado, tensão entre membros, resistência a decisão — quando esses sinais aparecem em reunião coletiva, são dados de gestão de times (ex: "time todo demonstrou resistência à proposta de migração", "clima de frustração durante retrospectiva ao discutir prazo")
 
 ### 3. ESTRUTURAR (organizar em seções):
 
@@ -228,6 +229,15 @@ O texto_limpo deve seguir esta estrutura (use markdown):
 
 ## Observações
 [Informações relevantes que não se encaixam acima: alertas, sinais, conquistas]
+
+## Observações de Tom (opcional — incluir apenas quando houver sinais emocionais coletivos relevantes)
+- [Sinal emocional observado]: [Contexto e momento da reunião]
+
+Exemplos:
+- "Frustração generalizada: ao discutir estimativas de prazo, maioria do time expressou resistência — possível desalinhamento de expectativas com stakeholders"
+- "Excitação coletiva: demonstração de novo produto gerou energia alta no time, com 3+ membros pedindo para participar do projeto"
+- "Tensão pontual: discussão sobre responsabilidade pelo bug de producao gerou atrito entre dois membros — resolvido ao final da retro"
+Se não houver sinais emocionais coletivos relevantes, OMITIR a seção completamente.
 
 ### 5. PRINCÍPIOS DE LIMPEZA:
 
