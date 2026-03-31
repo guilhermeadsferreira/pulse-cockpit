@@ -1,113 +1,137 @@
-# Pulse Cockpit — V2.1
+# Pulse Cockpit — Revisao Extensiva
 
 ## What This Is
 
-Pulse Cockpit é um app desktop para gestores de tecnologia que transforma transcrições e anotações de cerimônias (1:1s, dailies, plannings, retros) num sistema vivo de inteligência sobre pessoas. O gestor arrasta artefatos para uma inbox; a IA analisa, extrai o que importa e acumula progressivamente num Perfil Vivo de cada liderado — alimentando pautas de 1:1, alertas proativos e relatórios de ciclo prontos para fórum de calibração. V2.1 completa a camada de exibição e prompts da V2, tornando visíveis na UI os dados de inteligência já produzidos pelo pipeline.
+Pulse Cockpit e um app desktop (Electron + React) para gestores de tecnologia que transforma transcricoes e anotacoes de cerimonias (1:1s, dailies, plannings, retros) num sistema vivo de inteligencia sobre pessoas. O nucleo (V1), qualidade de ingestao (V2) e inteligencia externa Jira/GitHub (V3) estao em producao. Este milestone foca em curadoria e qualidade: refinar prompts, pipeline, metricas e UX a partir de uma revisao extensiva que identificou 101 gaps (66 ja corrigidos, 35 pendentes).
 
 ## Core Value
 
-O contexto acumulado ao longo do ciclo — insights de 1:1, sinais de cerimônias, tendência emocional — deve estar acessível para o gestor na hora que importa: na tela do perfil, na pauta do próximo 1:1 e no relatório de calibração.
+Garantir que toda informacao coletada pelo pipeline seja de alta qualidade, acionavel e visivel para o gestor.
 
 ## Requirements
 
 ### Validated
 
-<!-- V1 — Núcleo (estável em produção) -->
 - ✓ People Registry: CRUD com config.yaml por pessoa — v1
-- ✓ Inbox + Pipeline de ingestão two-pass (Pass 1 sem perfil, Pass 2 com perfil) — v1
-- ✓ Perfil Vivo: escrita, atualização e migração automática de schema — v1
-- ✓ Action Loop: actions.yaml estruturado com rastreamento de ações comprometidas — v1
+- ✓ Inbox + Pipeline de ingestao two-pass (Pass 1 sem perfil, Pass 2 com perfil) — v1
+- ✓ Perfil Vivo: escrita, atualizacao e migracao automatica de schema — v1
+- ✓ Action Loop: actions.yaml estruturado com rastreamento de acoes comprometidas — v1
 - ✓ Pauta de 1:1 sob demanda com contexto acumulado — v1
-- ✓ Pauta com o gestor (roll-up do time com saúde dos liderados) — v1
-- ✓ Relatório de Ciclo com flag de promovibilidade e evidências — v1
-- ✓ Dashboard + Painel de Riscos do Time (TeamRiskPanel) — v1
-- ✓ Feed de Reuniões (visão transversal de artefatos) — v1
-- ✓ Módulo "Eu": demandas do gestor, ciclo pessoal, autoavaliação — v1
-- ✓ Suporte a reuniões coletivas (_coletivo) com roteamento de ações — v1
-- ✓ Detecção de pessoas não cadastradas (DetectedRegistry + syncPending) — v1
-- ✓ Processamento paralelo (max 3, per-person lock) — v1
-- ✓ Schema migration automática com versionamento (ProfileMigration) — v1
-- ✓ Pass de Cerimônia individual por participante em reuniões coletivas — v1
-- ✓ Framing narrativo por tipo de relação (liderado/gestor/par/stakeholder) — v1
-
-<!-- V2 — Qualidade de ingestão + inteligência de 1:1 (concluído 2026-03-26) -->
-- ✓ Prompt genérico refinado: ações, resumo, pontos de atenção com maior qualidade — v2
-- ✓ Pass de Cerimônia refinado: skills com evidência, cruzamento com perfil — v2
-- ✓ Pass de 1:1 profundo: follow-ups, compromissos tácitos, insights, correlações, resumo QR — v2
-- ✓ Schema migration v4→v5: tendência emocional, insights de 1:1, sinais de terceiros — v2
-- ✓ ActionRegistry: follow-up batch, campos estendidos (tipo, origem, contexto, ciclos_sem_mencao) — v2
-- ✓ Conexão ações_gestor → DemandaRegistry (módulo Eu) — v2
-- ✓ Reingestão em batch (IPC handlers: list-processados, reset-data, batch-reingest) — v2
-- ✓ Pauta enriquecida: insights, sinais de terceiros, PDI, ações por risco — v2
-- ✓ Relatório de ciclo enriquecido: insights, correlações, tendência, PDI — v2
-- ✓ TeamRiskPanel: novos gatilhos (abandono, tendência deteriorando, promessa gestor 14d+) — v2
+- ✓ Pauta com o gestor (roll-up do time com saude dos liderados) — v1
+- ✓ Relatorio de Ciclo com flag de promovibilidade e evidencias — v1
+- ✓ Dashboard + Painel de Riscos do Time — v1
+- ✓ Modulo "Eu": demandas do gestor, ciclo pessoal, autoavaliacao — v1
+- ✓ Pass de 1:1 profundo: follow-ups, compromissos tacitos, insights, correlacoes — v2
+- ✓ Pass de Cerimonia refinado: skills com evidencia, cruzamento com perfil — v2
+- ✓ External Intelligence: Jira + GitHub metrics, CrossAnalyzer, relatorios — v3
+- ✓ PDI como cidadao de primeira classe na UI — revisao R4
+- ✓ Dados externos em aba dedicada com historico — revisao R4
+- ✓ SinceLastMeetingCard: mudancas desde ultimo 1:1 — revisao R4
+- ✓ PromptConstants compartilhados entre prompts — revisao R2
+- ✓ Sentimentos como array contextual — revisao R2
+- ✓ Thresholds calibraveis por nivel/cargo — revisao R3
+- ✓ Insights positivos no CrossAnalyzer — revisao R3
+- ✓ Trend indicators nos relatorios — revisao R3
+- ✓ Loops de retroalimentacao corrigidos (6 pontos) — revisao R1
 
 ### Active
 
-<!-- V2.1 — Completar camada de exibição e prompts da V2 -->
-- [ ] UI: Exibir seção "Insights de 1:1" no PersonView (dados do Pass de 1:1 já existem no perfil.md)
-- [ ] UI: Exibir seção "Sinais de Terceiros" no PersonView (dados do Pass de Cerimônia já existem)
-- [ ] UI: Botão "Copiar para QR" no artefato de 1:1 (copiar resumo executivo para clipboard)
-- [ ] UI: Reingestão na SettingsView com modal de confirmação e progress bar
-- [ ] Pauta roll-up enriquecida com gestor: tendências do time, correlações, riscos compostos
-- [ ] Autoavaliação com dados V2: consumir insights de feedback_dado, tendências emocionais, accountability do gestor
+<!-- 35 tasks pendentes da revisao extensiva, organizadas por prioridade -->
+
+**Alta prioridade — Prompt Refinements (17 tasks):**
+- [ ] Ingestion: campo `pessoas_esperadas_ausentes` para cerimonias
+- [ ] Ingestion: early stagnation detection nos primeiros 3 meses
+- [ ] 1on1-deep: tendencia emocional requer 2+ entradas para "deteriorando"
+- [ ] Cerimonia: participacao minima diferenciada por tipo (daily/planning/retro)
+- [ ] Cerimonia: saude calibrada por cargo/nivel
+- [ ] Compression: harmonizar definicao de "ponto resolvido"
+- [ ] Compression: conquistas preservam titulo + outcome
+- [ ] Cycle: linha_do_tempo flexivel (5-10 eventos)
+- [ ] Cycle: expectativas benchmarked por cargo
+- [ ] Cycle: evidencias de promovibilidade nunca triviais
+- [ ] Autoavaliacao: valores calibrados por cargo
+- [ ] Autoavaliacao: desafios reconhecidos como campo
+- [ ] Gemini: mode detection por conteudo (nao filename)
+- [ ] Gemini: emotional content em full mode
+- [ ] Gemini: speaker identification confidence
+- [ ] Gestor-ciclo: decisao = trade-off explicito
+- [ ] Gestor-ciclo: aprendizado obrigatorio (min 1)
+
+**Alta prioridade — Pipeline & Schema (3 tasks):**
+- [ ] Temas: deduplicacao fuzzy (substring/keyword merge)
+- [ ] Health history: cleanup automatico (manter ultimas 50 entradas)
+- [ ] External data IPC: retorno com JSON tipado (nao regex)
+
+**Media prioridade — GitHub Metrics + CrossAnalyzer (7 tasks):**
+- [ ] Code review depth (avgCommentsPerReview, turnaround)
+- [ ] Collaboration score (co-authors, cross-team)
+- [ ] Test coverage trend per PR
+- [ ] CrossAnalyzer: campo causa_raiz nos insights
+- [ ] CrossAnalyzer: desalinhamento checado contra contexto (ferias, licenca)
+- [ ] Relatorios: narrative context paragraph do perfil
+- [ ] Relatorios: baseline comparison pessoal (media 3 meses)
+
+**Baixa prioridade — Action System + UX Avancado (8 tasks):**
+- [ ] Sync bidirecional acoes <> Jira (auto-fechar quando issue Done)
+- [ ] Insights cross-team (padroes em multiplos perfis)
+- [ ] Risk panel para pares e gestores (nao so liderados)
+- [ ] Escalation: acao vencida do gestor gera follow-up para liderado
+- [ ] Action audit trail: statusHistory[]
+- [ ] Prioridade de acoes atualizada pelo deep pass
+- [ ] Evidence aggregation para PDI
+- [ ] Agenda generation agendada (pre-1:1 automatico)
 
 ### Out of Scope
 
-- Entidade Projeto (projetos/{slug}/status.md) — V3; pipeline V2.1 não identifica projetos
-- View "Hoje / Esta Semana" — V3; requer nova view de leitura sobre estado atual
-- Integração MCP com Jira/Slack — V3; requer novos adapters de ingestão
-- PDI com coleta automática de evidências via projetos — V3
-- Insights cruzados do time (padrões entre múltiplas pessoas) — V3
-- Caso de promoção gerado por IA com base em projetos — V3
-- API Anthropic ou SDK direto — decisão arquitetural: usar sempre Claude Code CLI
+- Features novas nao mapeadas na revisao extensiva — foco e curadoria, nao expansao
+- Entidade Projeto (projetos/{slug}) — requer novo modelo de dados
+- Integracao MCP com Slack — requer novo adapter de ingestao
+- API Anthropic ou SDK direto — decisao arquitetural: sempre Claude Code CLI
+- Testes automatizados — abordagem defensiva, validacao via uso real
 
 ## Context
 
-**Estado atual (2026-03-26):** Branch `feat/v2-ingestion-quality`. V2 foi implementada e commitada. Os dados de inteligência (insights de 1:1, sinais de terceiros, tendência emocional, resumo QR) já são produzidos pelo pipeline e persistidos no `perfil.md` — mas ainda não exibidos na UI. A gap é de superfície, não de backend.
+**Estado atual (2026-03-31):** Branch `feat/v3-external-refinements`. Revisao extensiva identificou 101 tasks em 10 secoes (R1-R10). 66 tasks concluidas, 35 pendentes. O app esta em producao com dados reais de liderados no iCloud.
 
-**Arquitetura:** Electron (Main Process + Renderer React). IA via `child_process.spawn('claude', ['-p', prompt])` — nunca via SDK. Workspace em `~/Pulse Cockpit/` (ou path configurável), sincronizado com iCloud Drive.
+**Referencia de tasks:** `tasks/PLANO_REVISAO_EXTENSIVA.md` e `tasks/backlog.md` (secoes R1-R10 com criterios de aceite detalhados).
 
-**Dados reais em produção:** O workspace do usuário contém perfis de liderados com histórico acumulado. Qualquer mudança em ArtifactWriter, PersonRegistry ou classes que escrevem em disco deve ser feita com cuidado redobrado — uma regressão pode corromper perfis existentes.
+**Arquitetura:** Electron (Main Process + Renderer React). IA via `child_process.spawn('claude', ['-p', prompt])`. Workspace em disco (Markdown + YAML) sincronizado com iCloud Drive.
 
-**Cobertura de testes:** Nenhuma (zero testes automatizados). Qualidade garantida por revisão manual e uso real. Abordagem defensiva: mudanças cirúrgicas, não refatorações amplas.
-
-**Schema atual:** perfil.md v5 (tendência emocional, insights de 1:1, sinais de terceiros). Migrations são idempotentes e aditivas.
+**Cobertura de testes:** Zero. Qualidade garantida por revisao manual e uso real. Mudancas cirurgicas, nao refatoracoes amplas.
 
 ## Constraints
 
-- **Tech stack**: Electron + React + TypeScript — não mudar stack sem PDR
-- **IA**: Exclusivamente Claude Code CLI (`claude -p`) — nunca `@anthropic-ai/sdk`, nunca API keys
-- **Dados**: Workspace em disco (Markdown + YAML) — sem banco de dados, sem servidor
-- **Compatibilidade**: Mudanças em schema do perfil.md devem sempre ser aditivas; nunca remover campos sem migration
-- **Produção**: App em uso real com dados irreversíveis — nenhuma operação destrutiva no workspace sem confirmação explícita
-- **Sem testes**: Zero test coverage — validar via uso real; priorizar mudanças cirúrgicas sobre refatorações
+- **Producao:** App em uso real com dados irreversiveis — nenhuma operacao destrutiva sem confirmacao
+- **Tech stack:** Electron + React + TypeScript — nao mudar sem PDR
+- **IA:** Exclusivamente Claude Code CLI (`claude -p`) — nunca SDK/API
+- **Dados:** Workspace em disco (Markdown + YAML) — sem banco de dados
+- **Schema:** Mudancas em perfil.md devem ser aditivas; nunca remover campos sem migration
+- **Sem testes:** Zero coverage — priorizar mudancas cirurgicas
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Claude Code CLI em vez de API direta | Usuário-alvo já tem CLI instalado e autenticado; zero custo adicional, zero API key | ✓ Good |
-| Markdown + YAML em disco (sem DB) | Portável, editável, versionável com git, sincroniza com iCloud/Google Drive sem configuração | ✓ Good |
-| Two-pass ingestion (Pass 1 sem perfil, Pass 2 com perfil) | Pass 2 só corre quando há histórico suficiente (≥2 artefatos, >300 chars); evita latência em primeiros artefatos | ✓ Good |
-| Schema versionado com migration automática | Permite evoluir o perfil sem quebrar dados existentes | ✓ Good |
-| V2.1: UI-first, sem mudanças de backend | Dados já existem no perfil.md; gap é só de exibição — escopo menor, risco menor | — Pending |
+| Migrar tracking de pm-agent para GSD | Centralizar gestao de projeto num unico sistema (GSD) em vez de manter pm-agent + tasks/ em paralelo | -- Pending |
+| Priorizar prompt refinements sobre metricas avancadas | Prompts afetam qualidade de TODA ingestao; metricas avancadas sao aditivas | -- Pending |
+| Manter tasks/ como referencia historica | backlog.md e done.md contem criterios de aceite detalhados uteis durante implementacao | -- Pending |
 
 ## Evolution
 
-Este documento evolui a cada transição de fase e milestone.
+This document evolves at phase transitions and milestone boundaries.
 
-**Após cada fase** (via `/gsd:transition`):
-1. Requirements validados? → Mover para Validated com referência de fase
-2. Requirements invalidados? → Mover para Out of Scope com motivo
-3. Novos requirements emergiram? → Adicionar em Active
-4. Decisões a registrar? → Adicionar em Key Decisions
-5. "What This Is" ainda preciso? → Atualizar se houve drift
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? -> Move to Out of Scope with reason
+2. Requirements validated? -> Move to Validated with phase reference
+3. New requirements emerged? -> Add to Active
+4. Decisions to log? -> Add to Key Decisions
+5. "What This Is" still accurate? -> Update if drifted
 
-**Após o milestone V2.1** (via `/gsd:complete-milestone`):
-1. Revisão completa de todas as seções
-2. Core Value ainda correto? Atualizar se mudou
-3. Out of Scope ainda válido? Revisar antes de iniciar V3
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after initialization (V2.1 scope)*
+*Last updated: 2026-03-31 after initialization (Revisao Extensiva milestone)*
