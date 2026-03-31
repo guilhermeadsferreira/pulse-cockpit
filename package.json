@@ -27,6 +27,7 @@
       "category": "public.app-category.productivity",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "icon": "Logo.png",
       "target": [
         {
           "target": "dmg",
@@ -51,7 +52,12 @@
         "height": 380
       }
     },
-    "extraResources": [],
+    "extraResources": [
+      {
+        "from": "Logo.png",
+        "to": "Logo.png"
+      }
+    ],
     "asar": true,
     "publish": {
       "provider": "github",
@@ -60,6 +66,7 @@
     }
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.1",
     "chokidar": "^3.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
