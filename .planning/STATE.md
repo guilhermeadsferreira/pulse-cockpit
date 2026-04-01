@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 03
-last_updated: "2026-04-01T01:33:57.835Z"
+last_updated: "2026-04-01T01:38:31.357Z"
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State — Pulse Cockpit V2.1
@@ -47,6 +47,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 03]: ProfileContext extraido de notas_manuais e ultimas 5 linhas de Notas do perfil.md para deteccao de ausencia
 - [Phase 03]: firstReviewTurnaroundDias reutiliza calculo existente de tempoMedioReviewDias
 - [Phase 03]: collaborationScore composto por 3 fatores com pesos 30/40/30 (co-authored/cross-repo/reviews)
+- [Phase 03]: Baseline calcula media apenas sobre meses com dados (nao zero-fill)
+- [Phase 03]: Narrative context construido a partir de PersonConfig sem ler perfil.md
 
 ## Phases
 
@@ -77,6 +79,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | Phase 02 P01 | 12min | 2 tasks | 1 files |
 | Phase 02 P02 | 741 | 1 tasks | 2 files |
 | Phase 03 P01 | 114 | 2 tasks | 2 files |
+| Phase 03 P03 | 167 | 2 tasks | 5 files |
 
 ## Next Action
 
