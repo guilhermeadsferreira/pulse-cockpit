@@ -131,13 +131,14 @@ Plans:
 
 ### Phase 999.7: Perfil vivo sensibilizado pelo daily report (BACKLOG)
 
-**Goal:** O daily report deve atualizar o perfil vivo de forma determinística — não apenas gerar relatório descartável. Cada execução do daily deve persistir no perfil: histórico do ciclo do liderado, evolução ao longo do tempo, momento atual (bloqueios, velocity, carga), pontos de atenção emergentes, métricas consolidadas (Jira + Git) e tendências. O gestor abre o perfil e vê um retrato atualizado e rastreável — não precisa ler relatórios avulsos para entender onde cada pessoa está.
-**Requirements:** TBD
-**Plans:** 0 plans
-**Note:** Hoje o DailyReportGenerator gera relatório mas não persiste dados estruturados no perfil.md. Requer definir quais campos do perfil serão atualizados e como manter histórico sem poluir o arquivo.
+**Goal:** Os report generators (Daily, Weekly, Sprint, Monthly) persistem dados estruturados em metricas.md por pessoa, criando retrato quantitativo rastreavel que complementa o perfil qualitativo
+**Depends on**: Nothing (independent backlog)
+**Requirements:** MTRW-01, MTRW-02, MTRW-03, MTRW-04, MTRW-05, MTRW-06
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+- [ ] 999.7-01-PLAN.md — MetricsWriter + integracao Daily e Weekly (MTRW-01, MTRW-02, MTRW-03, MTRW-04)
+- [ ] 999.7-02-PLAN.md — Integracao Sprint e Monthly (MTRW-05, MTRW-06)
 
 ### Phase 999.8: Visão de PRs abertas com status de revisão (BACKLOG)
 
