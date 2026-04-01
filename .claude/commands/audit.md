@@ -5,6 +5,34 @@ para cada um.
 
 ---
 
+## Passo 0 — Auto-revisão obrigatória antes de auditar
+
+**ANTES de iniciar qualquer auditoria**, execute este passo:
+
+1. Leia a tabela de changelog abaixo e identifique o `último_commit_auditado`
+2. Rode: `git log <último_commit_auditado>..HEAD --oneline --no-merges -- '*.ts' '*.tsx'`
+3. Se houver commits novos, rode `git diff <último_commit_auditado>..HEAD -- '*.ts' '*.tsx'` e avalie:
+   - Algum componente listado na "Arquitetura de referência" foi alterado?
+   - Algum invariante (INV-01→23) pode ter sido violado ou precisa ser atualizado?
+   - Algum comportamento novo foi introduzido que merece check, spec gap ou cenário de confiança?
+4. Se sim: **atualize este documento primeiro** (invariantes, checks, spec gaps, confiança), adicione
+   uma linha na tabela de changelog, e só então prossiga com a auditoria.
+5. Se não houver commits novos ou nenhum for relevante: prossiga direto.
+
+> Este passo existe porque o audit.md é um documento vivo que precisa refletir o estado real do
+> código. Auditar contra invariantes desatualizados gera falsos positivos e falsos negativos.
+
+---
+
+## Changelog do audit.md
+
+| Data | Último commit auditado | O que mudou |
+|------|----------------------|-------------|
+| 2026-04-01 | `9456e89` | INV-20→23, checks 11.x/12.x (Haiku/auto-agenda), spec gaps 6.15→6.20, confiança 7.11→7.13, fix relacao em alertas 1:1, TaskAI no prompt |
+| 2026-03-31 | `d47ce06` | Versão inicial com INV-01→19, pipeline V3, external intelligence |
+
+---
+
 ## Tese do produto
 
 O Pulse Cockpit é um sistema de memória operacional para gestão que transforma artefatos brutos
@@ -69,8 +97,9 @@ gestor — sem servidor, sem API key, armazenado localmente em Markdown + YAML.
 - `ExternalDataPass`: orquestrador — cache 1h em `~/.pulsecockpit/cache/external/{slug}.json`,
   snapshot mensal em `external_data.yaml` (campo `historico`), atualiza seção "Dados Externos" no
   `perfil.md`, gera Demandas automáticas para insights severity="alta" com `gerarDemanda=true`.
-- `CrossAnalyzer`: 100% programático (sem IA). 8 tipos de insight: sobrecarga, bloqueio,
-  risco_sprint, prs_acumulando, desalinhamento, gap_comunicacao, crescimento, queda_atividade.
+- `CrossAnalyzer`: 100% programático (sem IA). 7 tipos de insight: sobrecarga, bloqueio,
+  risco_sprint, desalinhamento, gap_comunicacao, crescimento, destaque.
+  Sub-padrões: `prs_acumulando` mapeia para `sobrecarga`, `queda_atividade` mapeia para `desalinhamento`.
   Thresholds configuráveis no código (não na UI).
 - `Scheduler`: 3 triggers — daily (app start, 1x/dia), sprint (detecção de troca), on-demand (IPC).
   State persistido em `~/.pulsecockpit/cache/scheduler-state.json`.
@@ -243,6 +272,11 @@ Para cada item: responda com `[CONFIRMADO]`, `[VIOLAÇÃO PROVÁVEL]`,
 
 4.2 `precisa_1on1_frequencia` usa `frequencia_1on1_dias` do `config.yaml` da pessoa —
     não um valor global hardcoded. [INV-05]
+
+4.6 Alertas de frequência 1:1 (SystemAuditor, DashboardView, PersonCard) só disparam
+    para `relacao === 'liderado'` — pares e gestores não geram alerta de 1:1 atrasado.
+    Verificar que as 3 implementações (SystemAuditor, calc1on1Alert, TeamRiskPanel)
+    têm o guard de `relacao` consistente. [INV-05]
 
 4.3 `flag_promovibilidade` nunca retorna array `evidencias_promovibilidade` vazio — mesmo
     quando `flag === 'nao'`, lista as lacunas que justificam a decisão. [INV-01]
@@ -448,6 +482,17 @@ Cite o trecho da spec relevante.
      Jira fora do ar), não há como regenerar sem deletar o arquivo manualmente. A spec
      define UX para forçar regeneração?
 
+6.19 **TaskAI no prompt de análise:** `daily-analysis.prompt.ts` instrui o Haiku a não
+     sugerir subestimação de SP quando tasks são concluídas rápido — pode ser uso de IA.
+     Mas o tipo "TaskAI" é definido no Jira, não validado pelo sistema. Se o time não
+     classifica issues corretamente, o Haiku pode gerar observações incorretas sobre
+     reclassificação. A spec trata a dependência desse campo do Jira?
+
+6.20 **Labels de relação na UI de ações:** `AcoesTab` em `PersonView.tsx` exibe labels
+     dinâmicos por `relacao` (par/gestor/liderado). Se `relacao` não está definida, o
+     fallback é "Liderado". A spec define que toda pessoa cadastrada tem `relacao`
+     obrigatória, ou pode ficar undefined?
+
 ---
 
 ### Bloco 3 — Perspectiva do gestor (confiança no dado)
@@ -519,6 +564,104 @@ Responda em 2–4 frases objetivas. Classifique como `[CONFIÁVEL]`,
 
 ---
 
+### Bloco 4 — Valor entregue ao gestor
+
+> Este bloco avalia se o produto está realmente ajudando o gestor de tecnologia a tomar
+> decisões melhores, economizar tempo e melhorar a gestão das pessoas. Não basta o sistema
+> funcionar corretamente — precisa gerar valor percebido.
+>
+> Para cada item, classifique como `[VALOR ALTO]`, `[VALOR PARCIAL]`, `[VALOR BAIXO]`
+> ou `[DESTRUINDO VALOR]` (quando a feature atrapalha mais do que ajuda).
+> Inclua evidência: comportamento observado no código/output, ou gap que impede o valor.
+
+**Rotina diária do gestor**
+
+8.1 **Daily report → standup:** O daily report é suficiente para o gestor conduzir a
+    standup sem abrir Jira/GitHub separadamente? O TL;DR executivo, os alertas e as
+    observações Haiku cobrem o que o gestor precisa saber em 2 minutos? Ou o gestor
+    ainda precisa cruzar informações manualmente?
+
+8.2 **Dashboard como ponto de entrada:** O dashboard mostra as urgências certas na
+    ordem certa? O gestor abre o app e sabe imediatamente quem precisa de atenção?
+    Ou o dashboard é genérico demais e o gestor precisa clicar em cada pessoa?
+
+8.3 **Alertas acionáveis vs ruído:** Os alertas (1:1 atrasado, ação vencida, saúde
+    vermelha, dados stale) levam a ações concretas? Ou o volume de alertas causa
+    fadiga e o gestor para de olhar? Avaliar: quantos tipos de alerta existem vs
+    quantos são realmente acionáveis no dia-a-dia.
+
+**Preparação de 1:1**
+
+8.4 **Pauta auto-gerada:** A pauta gerada automaticamente é usável como está ou
+    serve apenas como rascunho? O prompt de pauta recebe contexto suficiente
+    (ações pendentes, pontos de atenção, dados externos, demandas do gestor)
+    para gerar perguntas específicas e relevantes? Ou gera perguntas genéricas
+    tipo "como você está se sentindo?"
+
+8.5 **Perfil como memória do gestor:** Ao abrir o perfil de um liderado antes do 1:1,
+    o gestor consegue reconstruir o contexto em 30 segundos? O resumo evolutivo,
+    os pontos de atenção, as ações pendentes e o histórico de saúde contam uma
+    história coerente? Ou são fragmentos desconexos que exigem interpretação?
+
+8.6 **"O que mudou desde a última 1:1":** Existe uma forma rápida de ver o delta
+    entre o último 1:1 e agora? Novas ingestões, mudanças de saúde, ações que
+    venceram, métricas externas que mudaram? Ou o gestor precisa comparar
+    mentalmente o estado atual com sua memória?
+
+**Gestão de pessoas ao longo do tempo**
+
+8.7 **Evolução longitudinal:** Após 3+ meses de uso, o perfil acumulado permite
+    ao gestor identificar padrões de crescimento, estagnação ou deterioração?
+    O relatório de ciclo conta uma narrativa coerente? Ou os dados se acumulam
+    sem síntese, e o gestor precisa ler tudo pra tirar conclusões?
+
+8.8 **PDI com evidência:** O sistema ajuda a construir e acompanhar PDIs com
+    base em evidências reais (feedbacks, comportamentos observados, métricas)?
+    Ou o PDI vive desconectado do que o sistema sabe sobre a pessoa?
+
+8.9 **Ações como sistema de accountability:** As ações registradas (do gestor e
+    do liderado) criam um ciclo real de acompanhamento? Ações vencidas geram
+    follow-up? Ações concluídas geram reconhecimento? Ou as ações são registradas
+    e esquecidas — o sistema coleta mas não cobra?
+
+**Inteligência que só o Pulse entrega**
+
+8.10 **Cruzamento de fontes:** O valor único do Pulse é cruzar artefatos humanos
+     (1:1s, reuniões) com dados externos (Jira, GitHub). Esse cruzamento está
+     gerando insights que o gestor NÃO conseguiria sozinho? Exemplos: "pessoa
+     reporta estar bem no 1:1 mas atividade no GitHub caiu 70%" ou "blocker no
+     Jira há 5 dias mas nunca mencionado na daily". Esses insights existem e são
+     surfaceados de forma visível?
+
+8.11 **Sinais de cerimônia:** O sistema captura sinais de comportamento em reuniões
+     coletivas (dailies, plannings, retros). Esses sinais estão gerando valor
+     incremental real? O gestor percebe informação que não perceberia só
+     assistindo a reunião? Ou os sinais são óbvios demais ("pessoa participou
+     da daily")?
+
+8.12 **Relatórios para stakeholders:** O gestor consegue usar os relatórios
+     (sprint, weekly, monthly, ciclo) para comunicar com seu próprio gestor
+     ou com stakeholders? Os relatórios contêm as métricas e narrativas que
+     um VP de engenharia ou CPO esperaria? Ou são internos demais?
+
+**Onde o produto pode estar destruindo valor**
+
+8.13 **Overhead de alimentação:** O sistema exige que o gestor alimente o inbox
+     com artefatos. Esse esforço é proporcional ao valor recebido? Ou o gestor
+     gasta mais tempo alimentando o sistema do que economiza usando-o?
+
+8.14 **Falsa sensação de controle:** O dashboard com scores, cores e alertas pode
+     criar a ilusão de que "está tudo sob controle" quando na verdade os dados
+     estão stale, os insights são superficiais ou os alertas são ignorados.
+     O sistema é honesto sobre suas limitações?
+
+8.15 **Viés de confirmação:** O sistema tende a reforçar a percepção existente do
+     gestor (via resumo evolutivo que acumula tom) ou desafia com dados
+     contraditórios? Se uma pessoa com histórico "verde" começa a ter sinais
+     de problema, o sistema detecta e alerta rápido o suficiente?
+
+---
+
 ## Output obrigatório
 
 Produza exatamente estas seções, nesta ordem:
@@ -546,13 +689,23 @@ comportamento inesperado pode emergir.
 Itens do Bloco 3 classificados como `[RISCO DE CONFIANÇA]` com: cenário concreto onde
 o gestor seria enganado.
 
-### 6. Quick wins (< 30 min cada)
-`Arquivo alvo | Mudança necessária | Invariante que resolve`
+### 6. Avaliação de valor
+Itens do Bloco 4 classificados por nível de valor. Para cada item:
+- **Classificação:** `[VALOR ALTO]`, `[VALOR PARCIAL]`, `[VALOR BAIXO]` ou `[DESTRUINDO VALOR]`
+- **Evidência:** o que no código/output sustenta a classificação
+- **Gap:** o que impede o valor máximo (se aplicável)
+- **Task sugerida:** ação concreta para melhorar (se classificado como PARCIAL, BAIXO ou DESTRUINDO)
+
+Priorize os items `[DESTRUINDO VALOR]` e `[VALOR BAIXO]` — são os que mais precisam de atenção.
+
+### 7. Quick wins (< 30 min cada)
+`Arquivo alvo | Mudança necessária | Invariante ou valor que resolve`
 Máximo 5 itens. Só inclua com evidência (Modo B) ou se a spec torna a mudança inequívoca.
 
-### 7. Ajustes prioritários
-`Prioridade N | Componente | Problema | Invariante | Esforço estimado`
-Máximo 7 itens, ordenados por impacto no invariante mais crítico.
+### 8. Ajustes prioritários
+`Prioridade N | Componente | Problema | Invariante/Valor | Esforço estimado`
+Máximo 10 itens, ordenados por: (1) destruindo valor, (2) invariante violada, (3) valor baixo.
+Inclua tasks tanto técnicas quanto de produto.
 
 ---
 
@@ -561,8 +714,11 @@ Máximo 7 itens, ordenados por impacto no invariante mais crítico.
 - Seja direto. Zero hedge desnecessário.
 - Nunca suavize um problema real.
 - Se algo engana o gestor, diga: "este campo engana o gestor porque X".
+- Se algo não gera valor, diga: "esta feature não gera valor porque X".
+- Se algo destrói valor, diga: "esta feature atrapalha o gestor porque X".
 - Modo A: nunca afirme "violação confirmada" sem código. Use "violação provável".
 - Modo B: toda violação tem arquivo + linha + trecho. Sem isso, não é confirmada.
 - `[NÃO ENCONTRADO]` nunca é omitido — escreva explicitamente.
 - `[SPEC GAP]` não é falha do sistema — é ausência de especificação.
 - Não repita o enunciado da pergunta. Vá direto ao dado.
+- Tasks sugeridas devem ser concretas e executáveis — não "melhorar X", mas "adicionar Y em Z".

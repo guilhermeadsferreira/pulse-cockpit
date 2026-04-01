@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
@@ -87,14 +87,18 @@ export class DailyReportGenerator {
     this.relatoriosDir = join(workspacePath, 'relatorios')
   }
 
-  async generate(date?: string): Promise<string> {
+  async generate(date?: string, force?: boolean): Promise<string> {
     const today = date ?? new Date().toISOString().slice(0, 10)
     const formattedDate = this.formatDateBR(today)
     const filePath = join(this.relatoriosDir, `Daily-${formattedDate}.md`)
 
-    if (existsSync(filePath)) {
+    if (existsSync(filePath) && !force) {
       log.debug('daily report já existe, pulando geração', { date: today })
       return filePath
+    }
+    if (force && existsSync(filePath)) {
+      log.info('daily report: regenerando (force)', { date: today })
+      unlinkSync(filePath)
     }
 
     log.info('generateDailyReport: iniciando', { date: today })
@@ -522,7 +526,11 @@ export class DailyReportGenerator {
       return null
     }
 
-    const lines: string[] = ['', '## Observações (IA)', '']
+    const lines: string[] = [
+      '', '## Observações (IA)', '',
+      `> *Análise gerada por IA (${model}) com dados de até 1h atrás. Tratar como hipóteses a confirmar.*`,
+      '',
+    ]
     const typeIcons: Record<string, string> = {
       padrao: '🔍',
       risco: '⚠️',
@@ -530,7 +538,16 @@ export class DailyReportGenerator {
       sugestao: '💡',
     }
 
-    for (const obs of data.observacoes.slice(0, 6)) {
+    // Filter observations that overlap significantly with deterministic alerts
+    const alertsLower = (analysisInput.alerts || '').toLowerCase()
+    const deduped = data.observacoes.slice(0, 6).filter(obs => {
+      const words = obs.texto.toLowerCase().split(/\s+/).filter(w => w.length > 4)
+      if (words.length === 0) return true
+      const overlapCount = words.filter(w => alertsLower.includes(w)).length
+      return overlapCount / words.length < 0.5
+    })
+
+    for (const obs of deduped) {
       const icon = typeIcons[obs.tipo] ?? '🧠'
       const pessoa = obs.pessoa ? ` [${obs.pessoa}]` : ''
       lines.push(`- ${icon}${pessoa} ${obs.texto}`)
@@ -752,8 +769,9 @@ export class DailyReportGenerator {
           const statusIcon = task.statusCategory === 'review' ? '🔄' : '🔵'
           const daysLabel = task.daysInStatus > 0 ? ` — há ${task.daysInStatus}d` : ''
           const alertIcon = task.alert === 'warning' ? ' ⚠️' : ''
-          const baselineNote = report.cycleTimeBaseline && task.daysInStatus > report.cycleTimeBaseline
-            ? ` (baseline: ${report.cycleTimeBaseline}d)` : ''
+          const baselineNote = report.cycleTimeBaseline != null
+            ? (task.daysInStatus > report.cycleTimeBaseline ? ` (baseline: ${report.cycleTimeBaseline}d)` : '')
+            : (task.daysInStatus > 3 ? ' (sem baseline)' : '')
           lines.push(`- ${statusIcon} **${task.key}**: ${task.summary}${sp} — _${task.status}_${daysLabel}${baselineNote}${alertIcon}`)
         }
       } else {

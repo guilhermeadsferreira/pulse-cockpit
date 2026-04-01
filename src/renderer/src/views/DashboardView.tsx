@@ -383,7 +383,7 @@ function CrossTeamInsightsPanel({ insights }: {
 }
 
 function calc1on1Alert(perfil: Partial<PerfilFrontmatter>, frequenciaDias: number, relacao?: string): { label: string; urgent: boolean } | null {
-  if (relacao && relacao !== 'liderado') return null
+  if (relacao !== 'liderado') return null
   if (!perfil.ultimo_1on1) return null
   const daysSince = Math.floor((Date.now() - new Date(perfil.ultimo_1on1).getTime()) / 86_400_000)
   const daysLate  = daysSince - frequenciaDias
@@ -410,6 +410,12 @@ function PersonCard({
     vermelho: 'var(--red)',
   }[perfil.saude ?? ''] ?? 'var(--surface-3)'
 
+  const lastUpdate = perfil.ultima_ingestao ?? perfil.ultima_atualizacao
+  const diasSinceUpdate = lastUpdate
+    ? Math.floor((Date.now() - new Date(lastUpdate).getTime()) / 86_400_000)
+    : null
+  const healthStale = diasSinceUpdate != null && diasSinceUpdate > 14
+
   const today = new Date().toISOString().slice(0, 10)
   const overdueActions = actions.filter(
     (a) => a.status === 'open' && a.prazo != null && a.prazo < today
@@ -428,14 +434,20 @@ function PersonCard({
         borderRadius: 'var(--r)',
         overflow: 'hidden',
         position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       {/* Left border — health indicator */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, width: 3, height: '100%',
-        background: healthColor,
-        transition: 'background 0.3s ease',
-      }} />
+      <div
+        title={diasSinceUpdate != null ? `Dados de ${diasSinceUpdate}d atrás` : undefined}
+        style={{
+          position: 'absolute', top: 0, left: 0, width: 3, height: '100%',
+          background: healthColor,
+          opacity: healthStale ? 0.45 : 1,
+          transition: 'background 0.3s ease, opacity 0.3s ease',
+        }}
+      />
 
       {/* Card header */}
       <div style={{ padding: '14px 14px 12px 18px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
@@ -483,7 +495,7 @@ function PersonCard({
               {alert1on1.label}
             </span>
           )}
-          {perfil.necessita_1on1 && !perfil.dados_stale && (
+          {perfil.necessita_1on1 && !perfil.dados_stale && person.relacao === 'liderado' && (
             <span
               title={perfil.motivo_1on1 ?? '1:1 necessário'}
               style={{
@@ -603,9 +615,27 @@ function PersonCard({
               ↑ melhorando
             </span>
           )}
+          {/* Sugestão de ingestão direta (ceremony-only profiles) */}
+          {(perfil as Record<string, unknown>).sugestao_ingestao && (
+            <span
+              title={(perfil as Record<string, unknown>).sugestao_ingestao as string}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 600,
+                padding: '2px 7px', borderRadius: 20,
+                background: 'rgba(100,140,200,0.1)',
+                border: '1px solid rgba(100,140,200,0.3)',
+                color: 'var(--text-secondary)',
+                alignSelf: 'center', cursor: 'help',
+              }}
+            >
+              sem ingestão direta
+            </span>
+          )}
         </div>
       )}
 
+      <div style={{ marginTop: 'auto' }}>
       <div style={{ height: 1, background: 'var(--border-subtle)', margin: '0 14px 0 18px' }} />
 
       {/* Actions */}
@@ -618,6 +648,7 @@ function PersonCard({
           <Pencil size={12} />
           Editar
         </button>
+      </div>
       </div>
     </div>
   )

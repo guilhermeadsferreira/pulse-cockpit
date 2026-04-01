@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
@@ -45,7 +45,7 @@ export class MonthlyReportGenerator {
     this.externalPass = new ExternalDataPass(workspacePath)
   }
 
-  async generate(yearMonth?: string): Promise<string> {
+  async generate(yearMonth?: string, force?: boolean): Promise<string> {
     const now = new Date()
     const targetYear = yearMonth ? parseInt(yearMonth.split('-')[0], 10) : now.getFullYear()
     const targetMonth = yearMonth ? parseInt(yearMonth.split('-')[1], 10) : now.getMonth() + 1
@@ -54,9 +54,13 @@ export class MonthlyReportGenerator {
     const monthName = MESES[targetMonth - 1]
     const filePath = join(this.relatoriosDir, `Monthly-${monthStr}-${targetYear}.md`)
 
-    if (existsSync(filePath)) {
+    if (existsSync(filePath) && !force) {
       log.debug('monthly report já existe, pulando geração', { year: targetYear, month: targetMonth })
       return filePath
+    }
+    if (force && existsSync(filePath)) {
+      log.info('monthly report: regenerando (force)', { year: targetYear, month: targetMonth })
+      unlinkSync(filePath)
     }
 
     log.info('generateMonthlyReport: iniciando', { year: targetYear, month: targetMonth })

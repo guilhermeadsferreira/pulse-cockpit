@@ -418,7 +418,7 @@ export function PersonView() {
                 </>
               )}
               {activeTab === 'artefatos' && <ArtifactsTab artifacts={artifacts} />}
-              {activeTab === 'pautas'    && <PautasTab pautas={pautas} onGenerate={handleGenerateAgenda} generating={generatingAgenda} hasPerfil={!!perfil} />}
+              {activeTab === 'pautas'    && <PautasTab pautas={pautas} onGenerate={handleGenerateAgenda} generating={generatingAgenda} hasPerfil={!!perfil} slug={person?.slug ?? ''} />}
               {activeTab === 'acoes'     && (
                 <AcoesTab
                   actions={actions}
@@ -730,12 +730,13 @@ function ArtifactCard({ artifact: a }: { artifact: ArtifactMeta }) {
 // ── Pautas tab ─────────────────────────────────────────────────────────────────
 
 function PautasTab({
-  pautas, onGenerate, generating, hasPerfil,
+  pautas, onGenerate, generating, hasPerfil, slug,
 }: {
   pautas:     PautaMeta[]
   onGenerate: () => void
   generating: boolean
   hasPerfil:  boolean
+  slug:       string
 }) {
   if (pautas.length === 0) {
     return (
@@ -772,15 +773,16 @@ function PautasTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {pautas.map((p, i) => <PautaCard key={i} pauta={p} />)}
+      {pautas.map((p, i) => <PautaCard key={i} pauta={p} slug={slug} />)}
     </div>
   )
 }
 
-function PautaCard({ pauta: p }: { pauta: PautaMeta }) {
+function PautaCard({ pauta: p, slug }: { pauta: PautaMeta; slug: string }) {
   const [expanded, setExpanded] = useState(false)
   const [content,  setContent]  = useState<string | null>(null)
   const [loading,  setLoading]  = useState(false)
+  const [rated,    setRated]    = useState<string | null>(null)
 
   async function toggle() {
     if (!expanded && content === null) {
@@ -790,6 +792,11 @@ function PautaCard({ pauta: p }: { pauta: PautaMeta }) {
       setLoading(false)
     }
     setExpanded((v) => !v)
+  }
+
+  async function handleRate(rating: 'util' | 'precisa_melhorar') {
+    await window.api.people.ratePauta(slug, p.date, rating)
+    setRated(rating)
   }
 
   return (
@@ -813,6 +820,16 @@ function PautaCard({ pauta: p }: { pauta: PautaMeta }) {
         <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {p.fileName}
         </span>
+        {rated && (
+          <span style={{
+            fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 20,
+            background: rated === 'util' ? 'rgba(76,175,80,0.1)' : 'rgba(255,152,0,0.1)',
+            border: `1px solid ${rated === 'util' ? 'rgba(76,175,80,0.3)' : 'rgba(255,152,0,0.3)'}`,
+            color: rated === 'util' ? 'var(--green)' : 'var(--yellow, #d4a843)',
+          }}>
+            {rated === 'util' ? 'Útil' : 'Melhorar'}
+          </span>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {loading && <Loader2 size={12} style={{ color: 'var(--text-muted)', animation: 'spin 1s linear infinite' }} />}
           <button
@@ -835,8 +852,38 @@ function PautaCard({ pauta: p }: { pauta: PautaMeta }) {
         </div>
       </div>
       {expanded && content !== null && (
-        <div style={{ padding: '16px 18px', borderTop: '1px solid var(--border-subtle)' }}>
-          <MarkdownPreview content={content} maxHeight={560} />
+        <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ padding: '16px 18px' }}>
+            <MarkdownPreview content={content} maxHeight={560} />
+          </div>
+          {!rated && (
+            <div style={{
+              padding: '10px 18px', borderTop: '1px solid var(--border-subtle)',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Esta pauta foi útil?</span>
+              <button
+                onClick={() => handleRate('util')}
+                style={{
+                  fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 4,
+                  background: 'rgba(76,175,80,0.1)', border: '1px solid rgba(76,175,80,0.3)',
+                  color: 'var(--green)', cursor: 'pointer',
+                }}
+              >
+                Útil
+              </button>
+              <button
+                onClick={() => handleRate('precisa_melhorar')}
+                style={{
+                  fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 4,
+                  background: 'rgba(255,152,0,0.1)', border: '1px solid rgba(255,152,0,0.3)',
+                  color: 'var(--yellow, #d4a843)', cursor: 'pointer',
+                }}
+              >
+                Precisa melhorar
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1136,7 +1183,7 @@ function ActionRow({
           textDecoration: isDone || isCancelled ? 'line-through' : 'none',
           lineHeight: 1.5,
         }}>
-          {a.descricao ?? a.texto}
+          {a.descricao ?? ((a.responsavel && a.texto?.startsWith(a.responsavel) ? a.texto.slice(a.responsavel.length).replace(/^:\s*/, '') : a.texto) || '')}
         </div>
         {a.contexto && (
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>

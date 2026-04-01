@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
@@ -46,16 +46,20 @@ export class WeeklyReportGenerator {
     this.externalPass = new ExternalDataPass(workspacePath)
   }
 
-  async generate(weekStart?: string, weekEnd?: string): Promise<string> {
+  async generate(weekStart?: string, weekEnd?: string, force?: boolean): Promise<string> {
     const end = weekEnd ?? this.getDateStr(0)
     const start = weekStart ?? this.getDateStr(-7)
     const formattedStart = this.formatDateBR(start)
     const formattedEnd = this.formatDateBR(end)
     const filePath = join(this.relatoriosDir, `Weekly-${formattedStart}-a-${formattedEnd}.md`)
 
-    if (existsSync(filePath)) {
+    if (existsSync(filePath) && !force) {
       log.debug('weekly report já existe, pulando geração', { start, end })
       return filePath
+    }
+    if (force && existsSync(filePath)) {
+      log.info('weekly report: regenerando (force)', { start, end })
+      unlinkSync(filePath)
     }
 
     log.info('generateWeeklyReport: iniciando', { start, end })

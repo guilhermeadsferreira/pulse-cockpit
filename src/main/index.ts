@@ -12,7 +12,7 @@ import { setupWorkspace } from './workspace/WorkspaceSetup'
 import { runClaudePrompt, runWithProvider } from './ingestion/ClaudeRunner'
 import { readFile } from './ingestion/FileReader'
 import { FileWatcher } from './ingestion/FileWatcher'
-import { buildAgendaPrompt, renderAgendaMarkdown, type AgendaAIResult } from './prompts/agenda.prompt'
+import { buildAgendaPrompt, renderAgendaMarkdown, type AgendaAIResult, type DeltaSinceLastMeeting } from './prompts/agenda.prompt'
 import { buildGestorAgendaPrompt, renderGestorAgendaMarkdown, type AgendaGestorAIResult } from './prompts/agenda-gestor.prompt'
 import { buildCyclePrompt, renderCycleMarkdown, type CycleAIResult } from './prompts/cycle.prompt'
 import { buildGestorCicloPrompt, renderGestorCicloMarkdown, type GestorCicloAIResult } from './prompts/gestor-ciclo.prompt'
@@ -21,6 +21,7 @@ import type { CycleReportParams, AutoavaliacaoParams, DemandaStatus } from '../r
 import { Logger, type LogLevel } from './logging'
 import { Scheduler } from './external/Scheduler'
 import { ExternalDataPass } from './external/ExternalDataPass'
+import { DailyReportGenerator } from './external/DailyReportGenerator'
 import { WeeklyReportGenerator } from './external/WeeklyReportGenerator'
 import { MonthlyReportGenerator } from './external/MonthlyReportGenerator'
 import { GitHubClient } from './external/GitHubClient'
@@ -176,7 +177,43 @@ export async function generateAgendaForPerson(
     const externalMatch = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
     const externalData = externalMatch?.[1]?.trim() || ''
 
-    const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData })
+    // Compute delta since last 1:1
+    let deltaSinceLastMeeting: DeltaSinceLastMeeting | undefined
+    const ultimo1on1 = perfilData.frontmatter.ultimo_1on1 as string | null
+    if (ultimo1on1) {
+      const artifacts = registry.listArtifacts(slug)
+      const newIngestions = artifacts.filter(a => a.date > ultimo1on1).length
+
+      const saudeMatch = perfilData.raw.match(/## Histórico de Saúde\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+      const saudeLines = (saudeMatch?.[1] || '').split('\n').filter(l => l.startsWith('- '))
+      const healthChanges = saudeLines
+        .filter(l => {
+          const dateMatch = l.match(/^- (\d{4}-\d{2}-\d{2})/)
+          return dateMatch && dateMatch[1] > ultimo1on1
+        })
+        .map(l => l.replace(/^- /, '').slice(0, 80))
+        .slice(-3)
+
+      const overdueActions = enrichedActions.filter(a => {
+        const prazo = (a as Record<string, unknown>).prazo as string | undefined
+        return prazo && prazo < today && prazo >= ultimo1on1
+      }).length
+
+      const atencaoMatch = perfilData.raw.match(/## Pontos de Atenção\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+      const atencaoLines = (atencaoMatch?.[1] || '').split('\n').filter(l => l.startsWith('- '))
+      const newAttentionPoints = atencaoLines.filter(l => {
+        const dateMatch = l.match(/\((\d{4}-\d{2}-\d{2})\)/)
+        return dateMatch && dateMatch[1] > ultimo1on1
+      }).length
+
+      if (newIngestions > 0 || healthChanges.length > 0 || overdueActions > 0 || newAttentionPoints > 0) {
+        deltaSinceLastMeeting = { newIngestions, healthChanges, overdueActions, newAttentionPoints }
+      }
+    }
+
+    const pautaRatings = registry.listPautaRatings(slug).slice(0, 5)
+
+    const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData, deltaSinceLastMeeting, pautaRatings })
     const result = await runWithProvider('agendaGeneration', settings, prompt, {
       claudeBinPath,
       claudeTimeoutMs: 90_000,
@@ -344,6 +381,14 @@ function registerIpcHandlers(): void {
     return getRegistry().listPautas(slug)
   })
 
+  ipcMain.handle('people:rate-pauta', (_event, slug: string, date: string, rating: 'util' | 'precisa_melhorar', nota?: string) => {
+    getRegistry().savePautaRating(slug, date, rating, nota)
+  })
+
+  ipcMain.handle('people:list-pauta-ratings', (_event, slug: string) => {
+    return getRegistry().listPautaRatings(slug)
+  })
+
   // ── People: Perfil vivo ───────────────────────────────────
   ipcMain.handle('people:get-perfil', (_event, slug: string) => {
     const { workspacePath } = SettingsManager.load()
@@ -359,6 +404,15 @@ function registerIpcHandlers(): void {
     perfil.frontmatter.dados_stale = ultimaIngestao
       ? (Date.now() - new Date(ultimaIngestao).getTime()) > 30 * 24 * 60 * 60 * 1000
       : false
+
+    // Detect ceremony-only profiles
+    const totalArtefatos = (perfil.frontmatter.total_artefatos as number) ?? 0
+    const saudeBlock = perfil.raw.match(/## Histórico de Saúde[\s\S]*?<!-- FIM BLOCO SAUDE -->/)?.[0] ?? ''
+    const ceremonySignalCount = saudeBlock.split('\n').filter(l => l.startsWith('- ')).length
+    if (totalArtefatos === 0 && ceremonySignalCount > 5) {
+      perfil.frontmatter.sugestao_ingestao = `Sinais de ${ceremonySignalCount} cerimônias sem ingestão direta`
+    }
+
     return perfil
   })
 
@@ -785,6 +839,39 @@ function registerIpcHandlers(): void {
     const { workspacePath } = SettingsManager.load()
     const generator = new MonthlyReportGenerator(workspacePath)
     return generator.generate(yearMonth)
+  })
+
+  ipcMain.handle('external:regenerate-report', async (_event, reportName: string) => {
+    const { workspacePath } = SettingsManager.load()
+    const log = Logger.getInstance().child('IPC')
+    log.info('external:regenerate-report chamado', { reportName })
+
+    if (reportName.startsWith('Daily-')) {
+      const generator = new DailyReportGenerator(workspacePath)
+      const dateMatch = reportName.match(/Daily-(\d{2})-(\d{2})-(\d{4})/)
+      const date = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : undefined
+      return generator.generate(date, true)
+    }
+    if (reportName.startsWith('Weekly-')) {
+      const generator = new WeeklyReportGenerator(workspacePath)
+      const match = reportName.match(/Weekly-(\d{2})-(\d{2})-(\d{4})-a-(\d{2})-(\d{2})-(\d{4})/)
+      if (match) {
+        const start = `${match[3]}-${match[2]}-${match[1]}`
+        const end = `${match[6]}-${match[5]}-${match[4]}`
+        return generator.generate(start, end, true)
+      }
+      return generator.generate(undefined, undefined, true)
+    }
+    if (reportName.startsWith('Monthly-')) {
+      const generator = new MonthlyReportGenerator(workspacePath)
+      const match = reportName.match(/Monthly-(\d{2})-(\d{4})/)
+      const yearMonth = match ? `${match[2]}-${match[1]}` : undefined
+      return generator.generate(yearMonth, true)
+    }
+    if (reportName.startsWith('sprint_')) {
+      throw new Error('Sprint reports cannot be regenerated without active sprint context')
+    }
+    throw new Error(`Unknown report type: ${reportName}`)
   })
 
   ipcMain.handle('external:get-data', async (_event, slug: string): Promise<ExternalDataSnapshot | null> => {

@@ -19,7 +19,9 @@ declare global {
         save:       (data: PersonConfig) => Promise<void>
         delete:     (slug: string) => Promise<void>
         getPerfil:  (slug: string) => Promise<PerfilData | null>
-        listPautas: (slug: string) => Promise<PautaMeta[]>
+        listPautas:       (slug: string) => Promise<PautaMeta[]>
+        ratePauta:        (slug: string, date: string, rating: 'util' | 'precisa_melhorar', nota?: string) => Promise<void>
+        listPautaRatings: (slug: string) => Promise<Array<{ date: string; rating: string; nota?: string }>>
       }
 
       artifacts: {
@@ -112,8 +114,9 @@ declare global {
         refreshPerson:  (slug: string) => Promise<void>
         getData:        (slug: string) => Promise<string | null>
         getHistorico:   (slug: string) => Promise<Record<string, ExternalHistoricoEntry> | null>
-        listReports:    () => Promise<Array<{ name: string; date: string; size: number }>>
-        getReport:      (path: string) => Promise<string>
+        listReports:       () => Promise<Array<{ name: string; date: string; size: number }>>
+        getReport:         (path: string) => Promise<string>
+        regenerateReport:  (name: string) => Promise<string>
       }
 
       github: {

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry } from '../registry/PersonRegistry'
 import { ExternalDataPass, type ExternalDataSnapshot } from './ExternalDataPass'
@@ -28,13 +28,17 @@ export class SprintReportGenerator {
     this.externalPass = new ExternalDataPass(workspacePath)
   }
 
-  async generate(sprint: JiraSprint): Promise<string> {
+  async generate(sprint: JiraSprint, force?: boolean): Promise<string> {
     const safeName = sprint.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').replace(/\s+/g, '-')
     const filePath = join(this.relatoriosDir, `sprint_${safeName}.md`)
 
-    if (existsSync(filePath)) {
+    if (existsSync(filePath) && !force) {
       log.debug('sprint report já existe', { sprint: sprint.name })
       return filePath
+    }
+    if (force && existsSync(filePath)) {
+      log.info('sprint report: regenerando (force)', { sprint: sprint.name })
+      unlinkSync(filePath)
     }
 
     const registry = new PersonRegistry(this.workspacePath)

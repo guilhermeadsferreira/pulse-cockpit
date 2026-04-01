@@ -8,6 +8,13 @@ export interface AgendaOpenAction {
   ciclos_sem_mencao?: number
 }
 
+export interface DeltaSinceLastMeeting {
+  newIngestions: number
+  healthChanges: string[]
+  overdueActions: number
+  newAttentionPoints: number
+}
+
 export interface AgendaPromptParams {
   configYaml:        string
   perfilMd:          string
@@ -20,10 +27,12 @@ export interface AgendaPromptParams {
   pdiEstruturado?:   string
   externalData?:     string
   demandasGestor?:   string
+  deltaSinceLastMeeting?: DeltaSinceLastMeeting
+  pautaRatings?: Array<{ date: string; rating: string; nota?: string }>
 }
 
 export function buildAgendaPrompt(params: AgendaPromptParams): string {
-  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '', demandasGestor } = params
+  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '', demandasGestor, deltaSinceLastMeeting, pautaRatings = [] } = params
 
   const pautasSection = pautasAnteriores.length > 0
     ? `\n## Histórico de pautas anteriores\n${pautasAnteriores.map(p => `### Pauta de ${p.date}\n${p.content}`).join('\n\n')}\n`
@@ -59,6 +68,30 @@ export function buildAgendaPrompt(params: AgendaPromptParams): string {
     ? `\n## Demandas do gestor para esta 1:1\n${demandasGestor}\n`
     : ''
 
+  let deltaSection = ''
+  if (deltaSinceLastMeeting) {
+    const d = deltaSinceLastMeeting
+    const parts: string[] = []
+    if (d.newIngestions > 0) parts.push(`- ${d.newIngestions} nova(s) ingestão(ões)`)
+    if (d.healthChanges.length > 0) parts.push(`- Saúde: ${d.healthChanges.join('; ')}`)
+    if (d.overdueActions > 0) parts.push(`- ${d.overdueActions} ação(ões) venceram o prazo`)
+    if (d.newAttentionPoints > 0) parts.push(`- ${d.newAttentionPoints} novo(s) ponto(s) de atenção`)
+    if (parts.length > 0) {
+      deltaSection = `\n## Mudanças desde o último 1:1\n${parts.join('\n')}\n`
+    }
+  }
+
+  let ratingsSection = ''
+  if (pautaRatings.length > 0) {
+    const recent = pautaRatings.slice(0, 5)
+    const util = recent.filter(r => r.rating === 'util').length
+    const melhorar = recent.filter(r => r.rating === 'precisa_melhorar').length
+    const notas = recent.filter(r => r.nota).map(r => `"${r.nota}" (${r.date})`).join('; ')
+    let summary = `Últimas ${recent.length} pautas: ${util} úteis, ${melhorar} precisa melhorar.`
+    if (notas) summary += ` Feedback: ${notas}`
+    ratingsSection = `\n## Feedback de pautas anteriores\n${summary}\nAjuste o foco da pauta com base neste feedback.\n`
+  }
+
   const insightsSection = insightsRecentes
     ? `\n## Insights recentes de 1:1\n${insightsRecentes}\n`
     : ''
@@ -91,7 +124,7 @@ ${configYaml}
 
 ## Perfil vivo atual
 ${perfilMd}
-${pautasSection}${acoesSection}${demandasSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
+${pautasSection}${deltaSection}${ratingsSection}${acoesSection}${demandasSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
 ## Sua tarefa
 
 Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais de terceiros e PDI, gere uma pauta completa e estruturada para o próximo 1:1. Retorne APENAS um JSON válido (sem texto antes ou depois):
@@ -106,6 +139,7 @@ Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais
 }
 
 Regras:
+- Itens marcados com "(baixa confiança)" no perfil são hipóteses não confirmadas. Referencie-os como "possível" ou "a verificar", nunca como fatos. Priorize perguntas de validação para esses sinais.
 - "follow_ups": use DESCRIÇÃO COMPLETA e CONTEXTO das ações, não só texto resumido. Ações com risco de abandono (2+ ciclos sem menção) são PRIORIDADE MÁXIMA — devem ser os primeiros itens. Ações do gestor pendentes vão em seção separada como "prestar contas". Priorize as mais antigas.
 - "temas": assuntos recorrentes, pontos de atenção ou evolução de carreira que merecem discussão aprofundada. Conecte insights de 1:1 sobre carreira/PDI com perguntas sugeridas quando aplicável. Priorize pelo impacto.
 - "perguntas_sugeridas": 4 a 6 perguntas abertas, específicas e contextualizadas para esta pessoa. Sinais de terceiros não explorados devem gerar perguntas de validação (ex: "O Antonio mencionou X — como você vê isso?"). Insights de PDI conectam com perguntas de desenvolvimento. NUNCA use perguntas genéricas — baseie-se no perfil real. Use dados externos quantitativos (Jira, GitHub) para gerar perguntas com números concretos — ex: "Você tem ${openActions.length} ações abertas e 5 issues no Jira — como está gerenciando o workload?".

@@ -158,6 +158,28 @@ export function RelatoriosView() {
     }
   }
 
+  async function handleRegenerate(name: string) {
+    setRefreshing(true)
+    setSuccessHint(null)
+    try {
+      await window.api.external.regenerateReport(name)
+      setSuccessHint(`Relatório regenerado: ${name}`)
+      await loadReports()
+      setExpanded(name)
+      setPreviewLoading(true)
+      try {
+        const content = await window.api.external.getReport(name)
+        setPreview(content)
+      } finally {
+        setPreviewLoading(false)
+      }
+    } catch (err) {
+      alert(`Erro ao regenerar: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const dailyReports = reports.filter(r => r.name.startsWith('Daily-'))
   const weeklyReports = reports.filter(r => r.name.startsWith('Weekly-'))
   const monthlyReports = reports.filter(r => r.name.startsWith('Monthly-'))
@@ -315,6 +337,8 @@ export function RelatoriosView() {
                 preview={preview}
                 previewLoading={previewLoading}
                 onToggle={togglePreview}
+                onRegenerate={handleRegenerate}
+                regenerating={refreshing}
               />
             )}
 
@@ -327,6 +351,8 @@ export function RelatoriosView() {
                 preview={preview}
                 previewLoading={previewLoading}
                 onToggle={togglePreview}
+                onRegenerate={handleRegenerate}
+                regenerating={refreshing}
               />
             )}
 
@@ -339,6 +365,8 @@ export function RelatoriosView() {
                 preview={preview}
                 previewLoading={previewLoading}
                 onToggle={togglePreview}
+                onRegenerate={handleRegenerate}
+                regenerating={refreshing}
               />
             )}
 
@@ -351,6 +379,8 @@ export function RelatoriosView() {
                 preview={preview}
                 previewLoading={previewLoading}
                 onToggle={togglePreview}
+                onRegenerate={handleRegenerate}
+                regenerating={refreshing}
               />
             )}
           </div>
@@ -367,6 +397,8 @@ function ReportSection({
   preview,
   previewLoading,
   onToggle,
+  onRegenerate,
+  regenerating,
 }: {
   title: string
   reports: ReportMeta[]
@@ -374,6 +406,8 @@ function ReportSection({
   preview: string | null
   previewLoading: boolean
   onToggle: (name: string) => void
+  onRegenerate: (name: string) => void
+  regenerating: boolean
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -402,6 +436,8 @@ function ReportSection({
               preview={expanded === r.name ? preview : null}
               previewLoading={expanded === r.name && previewLoading}
               onToggle={() => onToggle(r.name)}
+              onRegenerate={() => onRegenerate(r.name)}
+              regenerating={regenerating}
             />
           ))}
         </div>
@@ -416,12 +452,16 @@ function ReportCard({
   preview,
   previewLoading,
   onToggle,
+  onRegenerate,
+  regenerating,
 }: {
   report: ReportMeta
   isExpanded: boolean
   preview: string | null
   previewLoading: boolean
   onToggle: () => void
+  onRegenerate?: () => void
+  regenerating?: boolean
 }) {
   const isDaily = r.name.startsWith('Daily-')
   const isWeekly = r.name.startsWith('Weekly-')
@@ -504,6 +544,23 @@ function ReportCard({
           {r.date}
         </span>
         <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+          {onRegenerate && !isSprint && (
+            <button
+              title="Regenerar relatório"
+              onClick={(e) => { e.stopPropagation(); onRegenerate() }}
+              disabled={regenerating}
+              style={{
+                background: 'none', border: 'none', cursor: regenerating ? 'wait' : 'pointer',
+                padding: 2, display: 'flex', color: 'var(--text-muted)',
+                opacity: regenerating ? 0.4 : 0.7,
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={(e) => { if (!regenerating) (e.currentTarget.style.opacity = '1') }}
+              onMouseLeave={(e) => { (e.currentTarget.style.opacity = regenerating ? '0.4' : '0.7') }}
+            >
+              <RefreshCw size={11} style={regenerating ? { animation: 'spin 1s linear infinite' } : undefined} />
+            </button>
+          )}
           {previewLoading && <Loader2 size={12} style={{ color: 'var(--text-muted)', animation: 'spin 1s linear infinite' }} />}
           <span style={{
             fontSize: 10, color: 'var(--text-muted)',

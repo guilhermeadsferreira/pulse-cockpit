@@ -8,8 +8,10 @@
  *   3 → 4: unique close markers per block (all blocks shared '<!-- FIM DO BLOCO GERENCIADO -->')
  *   4 → 5: new frontmatter (tendencia_emocional, nota_tendencia, ultimo_followup_acoes)
  *           + new sections "Insights de 1:1" and "Sinais de Terceiros"
+ *   5 → 6: ensure "Histórico de Saúde" section with markers exists (may have been
+ *           auto-created inline by ArtifactWriter without canonical placement)
  */
-export const CURRENT_SCHEMA_VERSION = 5
+export const CURRENT_SCHEMA_VERSION = 6
 
 export function migrateProfileContent(content: string): string {
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/)
@@ -68,6 +70,24 @@ export function migrateProfileContent(content: string): string {
       body = body.slice(0, saudeEndIdx) + '\n' + insightsSection + '\n' + sinaisSection + body.slice(saudeEndIdx)
     } else {
       body = body.trimEnd() + '\n' + insightsSection + '\n' + sinaisSection + '\n'
+    }
+  }
+
+  // v5 → v6: ensure "Histórico de Saúde" section with proper markers exists.
+  // ArtifactWriter auto-creates it inline on first ceremony signal, but profiles
+  // created before this section was introduced won't have canonical placement.
+  if (version < 6) {
+    const saudeOpen = '<!-- BLOCO GERENCIADO PELA IA — append apenas (histórico de saúde) -->'
+    const saudeClose = '<!-- FIM BLOCO SAUDE -->'
+    if (!body.includes(saudeOpen)) {
+      const saudeSection = `\n## Histórico de Saúde\n${saudeOpen}\n${saudeClose}\n`
+      const insightsMarker = '## Insights de 1:1'
+      if (body.includes(insightsMarker)) {
+        const idx = body.indexOf(insightsMarker)
+        body = body.slice(0, idx) + saudeSection + '\n' + body.slice(idx)
+      } else {
+        body = body.trimEnd() + '\n' + saudeSection
+      }
     }
   }
 

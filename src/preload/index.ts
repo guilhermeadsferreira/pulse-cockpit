@@ -18,7 +18,9 @@ contextBridge.exposeInMainWorld('api', {
     save:       (data: unknown) => ipcRenderer.invoke('people:save', data),
     delete:     (slug: string)  => ipcRenderer.invoke('people:delete', slug),
     getPerfil:  (slug: string)  => ipcRenderer.invoke('people:get-perfil', slug),
-    listPautas: (slug: string)  => ipcRenderer.invoke('people:list-pautas', slug),
+    listPautas:       (slug: string)  => ipcRenderer.invoke('people:list-pautas', slug),
+    ratePauta:        (slug: string, date: string, rating: 'util' | 'precisa_melhorar', nota?: string) => ipcRenderer.invoke('people:rate-pauta', slug, date, rating, nota),
+    listPautaRatings: (slug: string) => ipcRenderer.invoke('people:list-pauta-ratings', slug),
     lastResumoRH: (slug: string) => ipcRenderer.invoke('people:last-resumo-rh', slug),
   },
 
@@ -117,8 +119,9 @@ contextBridge.exposeInMainWorld('api', {
     refreshPerson:  (slug: string)  => ipcRenderer.invoke('external:refresh-person', slug),
     getData:        (slug: string)  => ipcRenderer.invoke('external:get-data', slug),
     getHistorico:   (slug: string)  => ipcRenderer.invoke('external:get-historico', slug),
-    listReports:    ()              => ipcRenderer.invoke('external:list-reports'),
-    getReport:      (path: string)  => ipcRenderer.invoke('external:get-report', path),
+    listReports:       ()              => ipcRenderer.invoke('external:list-reports'),
+    getReport:         (path: string)  => ipcRenderer.invoke('external:get-report', path),
+    regenerateReport:  (name: string)  => ipcRenderer.invoke('external:regenerate-report', name),
   },
 
   github: {

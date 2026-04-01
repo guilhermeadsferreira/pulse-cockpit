@@ -5,6 +5,9 @@ import type { CerimoniaSinalResult } from '../prompts/cerimonia-sinal.prompt'
 import type { OneOnOneResult } from '../prompts/1on1-deep.prompt'
 import { ActionRegistry } from '../registry/ActionRegistry'
 import { CURRENT_SCHEMA_VERSION } from '../migration/ProfileMigration'
+import { Logger } from '../logging/Logger'
+
+const log = Logger.getInstance().child('ArtifactWriter')
 
 const SECTION = {
   resumo:              { open: '<!-- BLOCO GERENCIADO PELA IA — reescrito a cada ingestão -->',                    close: '<!-- FIM BLOCO RESUMO -->' },
@@ -668,6 +671,7 @@ ${SECTION.sinais_terceiros.close}
     if (updated.includes(SECTION.saude_historico.open)) {
       updated = this.appendToBlock(updated, 'saude_historico', saudeLine)
     } else {
+      log.warn('saude_historico section missing in perfil — auto-creating', { perfilPath: tmpPath })
       updated = updated.trimEnd() + `\n\n## Histórico de Saúde\n${SECTION.saude_historico.open}\n${saudeLine}\n${SECTION.saude_historico.close}\n`
     }
 

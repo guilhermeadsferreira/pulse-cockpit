@@ -3,6 +3,9 @@ import { join, extname } from 'path'
 import yaml from 'js-yaml'
 import { migrateProfileContent } from '../migration/ProfileMigration'
 import { ActionRegistry } from './ActionRegistry'
+import { Logger } from '../logging/Logger'
+
+const log = Logger.getInstance().child('PersonRegistry')
 
 export interface PersonConfig {
   schema_version: number
@@ -46,6 +49,7 @@ export interface LideradoSnapshot {
   precisa_1on1_frequencia: boolean      // overdue by frequency config (no AI needed)
   dias_sem_1on1:          number | null // days since last 1:1
   dados_stale:            boolean       // true if no ingestion in 30+ days
+  sugestao_ingestao:      string | null // suggestion when ceremony signals exist but no direct ingestion
 }
 
 const PERSON_SUBDIRS = ['historico', 'pautas']
@@ -78,7 +82,12 @@ export class PersonRegistry {
     try {
       const parsed = yaml.load(readFileSync(configPath, 'utf-8'))
       if (!parsed || typeof parsed !== 'object') return null
-      return parsed as PersonConfig
+      const config = parsed as PersonConfig
+      if (!config.relacao) {
+        config.relacao = 'liderado'
+        log.warn('PersonConfig missing relacao, defaulting to liderado', { slug })
+      }
+      return config
     } catch {
       return null
     }
@@ -206,6 +215,32 @@ export class PersonRegistry {
     }).filter((p) => p.content.length > 0)
   }
 
+  savePautaRating(slug: string, date: string, rating: 'util' | 'precisa_melhorar', nota?: string): void {
+    const ratingsPath = join(this.pessoasDir, slug, 'pauta_ratings.yaml')
+    let ratings: Array<{ date: string; rating: string; nota?: string }> = []
+    if (existsSync(ratingsPath)) {
+      try {
+        const parsed = yaml.load(readFileSync(ratingsPath, 'utf-8'))
+        if (Array.isArray(parsed)) ratings = parsed
+      } catch { /* ignore */ }
+    }
+    ratings = ratings.filter(r => r.date !== date)
+    ratings.push({ date, rating, ...(nota ? { nota } : {}) })
+    ratings.sort((a, b) => b.date.localeCompare(a.date))
+    writeFileSync(ratingsPath, yaml.dump(ratings), 'utf-8')
+  }
+
+  listPautaRatings(slug: string): Array<{ date: string; rating: string; nota?: string }> {
+    const ratingsPath = join(this.pessoasDir, slug, 'pauta_ratings.yaml')
+    if (!existsSync(ratingsPath)) return []
+    try {
+      const parsed = yaml.load(readFileSync(ratingsPath, 'utf-8'))
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
   listArtifactsWithContent(
     slug: string,
     from: string,
@@ -295,6 +330,15 @@ export class PersonRegistry {
         const acoesPendentes = todasAcoes.filter((a) => a.status === 'open').length
         const acoesVencidas  = todasAcoes.filter((a) => a.status === 'open' && a.prazo != null && a.prazo < hoje).length
 
+        // Detect ceremony-only profiles (signals accumulated but no direct ingestion)
+        const totalArtefatos = (fm.total_artefatos as number) ?? 0
+        const hasCeremonySignals = perfil?.raw
+          ? (perfil.raw.match(/## Histórico de Saúde[\s\S]*?<!-- FIM BLOCO SAUDE -->/)?.[0]?.split('\n').filter(l => l.startsWith('- ')).length ?? 0) > 5
+          : false
+        const sugestaoIngestao = totalArtefatos === 0 && hasCeremonySignals
+          ? `Considere registrar um 1:1 ou feedback direto para ${p.nome}`
+          : null
+
         return {
           slug:                   p.slug,
           nome:                   p.nome,
@@ -311,6 +355,7 @@ export class PersonRegistry {
           precisa_1on1_frequencia: precisa1on1Frequencia,
           dias_sem_1on1:          diasSem1on1,
           dados_stale:            dadosStale,
+          sugestao_ingestao:      sugestaoIngestao,
         }
       })
   }
