@@ -138,3 +138,12 @@ Plans:
 
 Plans:
 - [x] 999.4-01-PLAN.md — Rota híbrida no Pass 1: runOpenRouterPrompt com system prompt + roteamento condicional em processItem
+
+### Phase 999.5: Visibilidade do board de sustentação por pessoa (BACKLOG)
+
+**Goal:** Integrar dados do board de sustentação (chamados de clientes/atendimento) ao perfil da pessoa — considerando que é um board separado onde praticamente só uma pessoa atua. O gestor precisa ver a carga de sustentação, tempo de resposta e impacto no capacity da pessoa (ex: Edu) para calibrar expectativas de entrega no board principal.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
