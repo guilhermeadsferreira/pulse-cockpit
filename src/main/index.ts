@@ -33,6 +33,106 @@ function getRegistry(): PersonRegistry {
   return new PersonRegistry(workspacePath)
 }
 
+/**
+ * Gera pauta de 1:1 para uma pessoa. Extraida do handler IPC para reuso pelo Scheduler.
+ * Retorna o resultado da geracao ou throws em caso de erro.
+ */
+export async function generateAgendaForPerson(
+  slug: string,
+  workspacePath: string,
+  claudeBinPath: string,
+): Promise<{ success: boolean; pauta?: string; path?: string; error?: string }> {
+  const registry = new PersonRegistry(workspacePath)
+  const person = registry.get(slug)
+  if (!person) return { success: false, error: 'Pessoa não encontrada.' }
+
+  const configRaw = registry.getConfigRaw(slug)
+  const perfilData = registry.getPerfil(slug)
+  if (!perfilData) {
+    return { success: false, error: 'Perfil não encontrado. Ingira pelo menos um artefato primeiro.' }
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const pautasAnteriores = registry.getLastPautas(slug, 2)
+  const openActions = new ActionRegistry(workspacePath)
+    .list(slug)
+    .filter((a) => a.status === 'open')
+    .map((a) => ({ texto: a.texto, criadoEm: a.criadoEm }))
+
+  const settings = SettingsManager.load()
+  let markdown: string
+
+  if (person.relacao === 'gestor') {
+    const liderados = registry.getTeamRollup()
+    const prompt = buildGestorAgendaPrompt({
+      configYaml: configRaw,
+      perfilMd: perfilData.raw,
+      today,
+      liderados,
+      pautasAnteriores,
+      openActions,
+    })
+    const result = await runWithProvider('agendaGeneration', settings, prompt, {
+      claudeBinPath,
+      claudeTimeoutMs: 90_000,
+      openRouterTimeoutMs: 90_000,
+    })
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error || 'Falha ao gerar pauta.' }
+    }
+    const agendaResult = result.data as AgendaGestorAIResult
+    markdown = renderGestorAgendaMarkdown(person.nome, today, agendaResult)
+  } else {
+    const ultimaIngestao = (perfilData.frontmatter.ultima_ingestao as string)
+      || (perfilData.frontmatter.ultima_atualizacao as string)?.slice(0, 10)
+      || null
+    const dadosStale = ultimaIngestao
+      ? (Date.now() - new Date(ultimaIngestao).getTime()) > 30 * 24 * 60 * 60 * 1000
+      : false
+    const actionReg = new ActionRegistry(workspacePath)
+    const enrichedActions = actionReg.list(slug)
+      .filter((a) => a.status === 'open')
+      .map((a) => ({
+        texto: a.texto,
+        descricao: (a as Record<string, unknown>).descricao as string | undefined,
+        criadoEm: a.criadoEm,
+        owner: a.owner,
+        tipo: (a as Record<string, unknown>).tipo as string | undefined,
+        contexto: (a as Record<string, unknown>).contexto as string | undefined,
+        ciclos_sem_mencao: (a as Record<string, unknown>).ciclos_sem_mencao as number | undefined,
+      }))
+
+    const insightsMatch = perfilData.raw.match(/## Insights de 1:1\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+    const insightsRecentes = insightsMatch?.[1]?.trim()
+      ?.split('\n').filter(Boolean).slice(-5).join('\n') || ''
+
+    const sinaisMatch = perfilData.raw.match(/## Sinais de Terceiros\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+    const sinaisTerceiros = sinaisMatch?.[1]?.trim() || ''
+
+    const pdiMatch = configRaw.match(/pdi:\n([\s\S]*?)(?=\n\w|\n$|$)/)
+    const pdiEstruturado = pdiMatch?.[1]?.trim() || ''
+
+    const externalMatch = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
+    const externalData = externalMatch?.[1]?.trim() || ''
+
+    const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData })
+    const result = await runWithProvider('agendaGeneration', settings, prompt, {
+      claudeBinPath,
+      claudeTimeoutMs: 90_000,
+      openRouterTimeoutMs: 90_000,
+    })
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error || 'Falha ao gerar pauta.' }
+    }
+    const agendaResult = result.data as AgendaAIResult
+    markdown = renderAgendaMarkdown(person.nome, today, agendaResult)
+  }
+
+  registry.savePauta(slug, today, markdown)
+  const filePath = join(workspacePath, 'pessoas', slug, 'pautas', `${today}-pauta.md`)
+  return { success: true, path: filePath, pauta: markdown }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -264,102 +364,11 @@ function registerIpcHandlers(): void {
     if (!settings.claudeBinPath) {
       return { success: false, error: 'Claude CLI não configurado. Configure o caminho em Settings.' }
     }
-    const registry = getRegistry()
-    const person = registry.get(slug)
-    if (!person) return { success: false, error: 'Pessoa não encontrada.' }
-
-    const configRaw = registry.getConfigRaw(slug)
-    const perfilData = registry.getPerfil(slug)
-    if (!perfilData) {
-      return { success: false, error: 'Perfil não encontrado. Ingira pelo menos um artefato primeiro.' }
+    try {
+      return await generateAgendaForPerson(slug, settings.workspacePath, settings.claudeBinPath)
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
-
-    const today = new Date().toISOString().slice(0, 10)
-    const pautasAnteriores = registry.getLastPautas(slug, 2)
-    const openActions = new ActionRegistry(settings.workspacePath)
-      .list(slug)
-      .filter((a) => a.status === 'open')
-      .map((a) => ({ texto: a.texto, criadoEm: a.criadoEm }))
-
-    let markdown: string
-
-    if (person.relacao === 'gestor') {
-      // Pauta com o meu gestor — inclui roll-up do time
-      const liderados = registry.getTeamRollup()
-      // TODO Fase 5: enrich gestor agenda with tendencias, correlações, riscos compostos
-      const prompt = buildGestorAgendaPrompt({
-        configYaml: configRaw,
-        perfilMd: perfilData.raw,
-        today,
-        liderados,
-        pautasAnteriores,
-        openActions,
-      })
-      const result = await runWithProvider('agendaGeneration', settings, prompt, {
-        claudeBinPath: settings.claudeBinPath,
-        claudeTimeoutMs: 90_000,
-        openRouterTimeoutMs: 90_000,
-      })
-      if (!result.success || !result.data) {
-        return { success: false, error: result.error || 'Falha ao gerar pauta.' }
-      }
-      const agendaResult = result.data as AgendaGestorAIResult
-      markdown = renderGestorAgendaMarkdown(person.nome, today, agendaResult)
-    } else {
-      // Pauta com liderado, par ou stakeholder — fluxo original
-      const ultimaIngestao = (perfilData.frontmatter.ultima_ingestao as string)
-        || (perfilData.frontmatter.ultima_atualizacao as string)?.slice(0, 10)
-        || null
-      const dadosStale = ultimaIngestao
-        ? (Date.now() - new Date(ultimaIngestao).getTime()) > 30 * 24 * 60 * 60 * 1000
-        : false
-      // Enrich context: insights, sinais, PDI
-      const actionReg = new ActionRegistry(settings.workspacePath)
-      const enrichedActions = actionReg.list(slug)
-        .filter((a) => a.status === 'open')
-        .map((a) => ({
-          texto: a.texto,
-          descricao: (a as Record<string, unknown>).descricao as string | undefined,
-          criadoEm: a.criadoEm,
-          owner: a.owner,
-          tipo: (a as Record<string, unknown>).tipo as string | undefined,
-          contexto: (a as Record<string, unknown>).contexto as string | undefined,
-          ciclos_sem_mencao: (a as Record<string, unknown>).ciclos_sem_mencao as number | undefined,
-        }))
-
-      // Extract insights from perfil
-      const insightsMatch = perfilData.raw.match(/## Insights de 1:1\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
-      const insightsRecentes = insightsMatch?.[1]?.trim()
-        ?.split('\n').filter(Boolean).slice(-5).join('\n') || ''
-
-      // Extract sinais de terceiros
-      const sinaisMatch = perfilData.raw.match(/## Sinais de Terceiros\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
-      const sinaisTerceiros = sinaisMatch?.[1]?.trim() || ''
-
-      // Serialize PDI from config
-      const pdiMatch = configRaw.match(/pdi:\n([\s\S]*?)(?=\n\w|\n$|$)/)
-      const pdiEstruturado = pdiMatch?.[1]?.trim() || ''
-
-      // Extract Dados Externos section from perfil.md
-      const externalMatch = perfilData.raw.match(/## Dados Externos\n[\s\S]*?<!--[^>]*-->\n([\s\S]*?)<!--/)
-      const externalData = externalMatch?.[1]?.trim() || ''
-
-      const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData })
-      const result = await runWithProvider('agendaGeneration', settings, prompt, {
-        claudeBinPath: settings.claudeBinPath,
-        claudeTimeoutMs: 90_000,
-        openRouterTimeoutMs: 90_000,
-      })
-      if (!result.success || !result.data) {
-        return { success: false, error: result.error || 'Falha ao gerar pauta.' }
-      }
-      const agendaResult = result.data as AgendaAIResult
-      markdown = renderAgendaMarkdown(person.nome, today, agendaResult)
-    }
-
-    registry.savePauta(slug, today, markdown)
-    const filePath = join(settings.workspacePath, 'pessoas', slug, 'pautas', `${today}-pauta.md`)
-    return { success: true, path: filePath, markdown }
   })
 
   ipcMain.handle('ai:cycle-report', async (_event, params: CycleReportParams) => {

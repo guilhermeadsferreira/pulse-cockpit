@@ -17,6 +17,7 @@ interface SchedulerState {
 }
 
 const CACHE_DIR_NAME = 'cache'
+const AGENDA_DAYS_BEFORE = 2 // Gerar pauta 2 dias antes do proximo 1:1 esperado
 
 export class Scheduler {
   private workspacePath: string
@@ -62,6 +63,16 @@ export class Scheduler {
 
     if (jiraEnabled && settings.jiraBoardId) {
       await this.checkSprintChange(settings)
+    }
+
+    // Auto-generate agendas for upcoming 1:1s
+    try {
+      const { generated } = await this.checkAgendaGeneration()
+      if (generated.length > 0) {
+        log.info('pautas auto-geradas no startup', { count: generated.length, people: generated })
+      }
+    } catch (err) {
+      log.warn('auto agenda check falhou', { error: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -119,6 +130,66 @@ export class Scheduler {
 
     const generator = new SprintReportGenerator(this.workspacePath)
     return generator.generate(sprint)
+  }
+
+  // ── Auto agenda generation ────────────────────────────────────
+
+  /**
+   * Verifica se algum liderado precisa de pauta gerada automaticamente.
+   * Criterio: proximo 1:1 esperado em <= AGENDA_DAYS_BEFORE dias e nao ha pauta recente.
+   */
+  async checkAgendaGeneration(): Promise<{ generated: string[] }> {
+    const settings = SettingsManager.load()
+    if (!settings.claudeBinPath) {
+      log.warn('auto agenda: Claude CLI nao configurado')
+      return { generated: [] }
+    }
+
+    const registry = new PersonRegistry(settings.workspacePath)
+    const people = registry.list().filter(p => p.relacao === 'liderado')
+    const today = new Date()
+    const generated: string[] = []
+
+    for (const person of people) {
+      try {
+        // Calcular quando e o proximo 1:1 esperado
+        const perfil = registry.getPerfil(person.slug)
+        const ultimo1on1 = perfil?.frontmatter?.ultimo_1on1 as string | null | undefined
+        if (!ultimo1on1) continue // Sem historico de 1:1 — nao gerar automaticamente
+
+        const frequenciaDias = person.frequencia_1on1_dias ?? 14
+        const ultimoDate = new Date(ultimo1on1)
+        const proximoDate = new Date(ultimoDate.getTime() + frequenciaDias * 86_400_000)
+        const diasAteProximo = Math.floor((proximoDate.getTime() - today.getTime()) / 86_400_000)
+
+        // Gerar se proximo 1:1 e em <= AGENDA_DAYS_BEFORE dias
+        if (diasAteProximo > AGENDA_DAYS_BEFORE) continue
+        if (diasAteProximo < -3) continue // Ja passou muito — nao gerar pauta atrasada
+
+        // Verificar se ja existe pauta recente (ultimos 3 dias)
+        const pautas = registry.listPautas(person.slug)
+        const pautaRecente = pautas.find(p => {
+          const diasSincePauta = Math.floor((today.getTime() - new Date(p.date).getTime()) / 86_400_000)
+          return diasSincePauta <= 3
+        })
+        if (pautaRecente) continue // Ja tem pauta recente — nao duplicar
+
+        log.info('agenda auto-generation triggered', { slug: person.slug, diasAteProximo, frequenciaDias })
+
+        // Gerar pauta chamando funcao extraida diretamente (sem IPC, sem BrowserWindow)
+        // Dynamic import to avoid circular dependency (index.ts imports Scheduler)
+        const { generateAgendaForPerson } = await import('../index')
+        const result = await generateAgendaForPerson(person.slug, settings.workspacePath, settings.claudeBinPath)
+        if (result?.success) {
+          generated.push(person.slug)
+          log.info('pauta auto-gerada', { slug: person.slug })
+        }
+      } catch (err) {
+        log.warn('auto agenda generation falhou', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
+    return { generated }
   }
 
   // ── Daily logic ───────────────────────────────────────────────
