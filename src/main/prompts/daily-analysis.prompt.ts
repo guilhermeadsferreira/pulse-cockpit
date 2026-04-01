@@ -31,10 +31,15 @@ Gere observações focadas em:
 3. **Sugestões de perguntas para o standup** — perguntas específicas e acionáveis, não genéricas. Ex: "Perguntar ao Kelvin sobre o bloqueio CNT-858 — está aguardando outro time?"
 4. **Destaques positivos** — reconhecer quem entregou, quem ajudou o time via reviews, quem desbloqueou outros
 
+## Contexto do time
+- O time está em fase de adoção de IA para desenvolvimento. Tasks concluídas rapidamente podem ser resultado de uso de IA, não necessariamente subestimação de story points.
+- No Jira, issues do tipo "TaskAI" indicam tasks desenvolvidas com auxílio de IA — considere isso ao avaliar velocidade de entrega.
+
 ## Regras
 - Máximo 6 observações, priorizadas por impacto para o gestor
 - Nunca repita informações que já estão nos alertas
 - Nunca use contagens brutas (commits, PRs) como métrica de performance individual
+- Não sugira subestimação de SP quando tasks são concluídas rápido — pode ser uso de IA. Se a issue não for do tipo TaskAI, sugira ao gestor verificar se deveria ser reclassificada para TaskAI
 - Foque no que é ACIONÁVEL — o gestor vai ler isso antes do standup
 - Seja direto, sem introduções ou conclusões
 

@@ -157,9 +157,9 @@ export class SystemAuditor {
         }
       }
 
-      // Check: 1:1 frequency compliance
+      // Check: 1:1 frequency compliance (only for liderados — par/gestor 1:1 is not mandatory)
       const ultimo1on1 = perfil.frontmatter.ultimo_1on1 as string
-      if (ultimo1on1 && person.frequencia_1on1_dias) {
+      if (ultimo1on1 && person.frequencia_1on1_dias && person.relacao === 'liderado') {
         const daysSince = Math.floor((now - new Date(ultimo1on1).getTime()) / DAY)
         const tolerance = person.frequencia_1on1_dias + 3
         if (daysSince > tolerance * 2) {

@@ -423,6 +423,7 @@ export function PersonView() {
                 <AcoesTab
                   actions={actions}
                   personSlug={person.slug}
+                  personRelacao={person.relacao}
                   personPdi={person.pdi}
                   onUpdateStatus={async (id, status) => {
                     try {
@@ -847,6 +848,7 @@ function PautaCard({ pauta: p }: { pauta: PautaMeta }) {
 function AcoesTab({
   actions,
   personSlug,
+  personRelacao,
   personPdi,
   onUpdateStatus,
   onDelete,
@@ -855,6 +857,7 @@ function AcoesTab({
 }: {
   actions: Action[]
   personSlug: string
+  personRelacao?: string
   personPdi?: PDIItem[]
   onUpdateStatus: (id: string, status: 'open' | 'done' | 'cancelled') => Promise<void>
   onDelete: (id: string) => Promise<void>
@@ -978,8 +981,8 @@ function AcoesTab({
                 color: 'var(--text-primary)', fontFamily: 'var(--font)', cursor: 'pointer',
               }}
             >
-              <option value="liderado">Liderado</option>
-              <option value="gestor">Eu (gestor)</option>
+              <option value="liderado">{personRelacao === 'par' ? 'Par' : personRelacao === 'gestor' ? 'Gestor' : 'Liderado'}</option>
+              <option value="gestor">Eu</option>
             </select>
             <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 6 }}>Prazo</label>
             <input
@@ -1053,7 +1056,7 @@ function AcoesTab({
             padding: '8px 0 6px', marginBottom: 4,
             borderBottom: '1px solid var(--border-subtle)',
           }}>
-            Do liderado · {lideradoActions.length}
+            {personRelacao === 'par' ? 'Do par' : personRelacao === 'gestor' ? 'Do gestor' : 'Do liderado'} · {lideradoActions.length}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {lideradoActions.map((a) => (
@@ -1072,7 +1075,7 @@ function AcoesTab({
             padding: '8px 0 6px', marginBottom: 4,
             borderBottom: '1px solid var(--border-subtle)',
           }}>
-            Minhas — gestor · {gestorActions.length}
+            Minhas · {gestorActions.length}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {gestorActions.map((a) => (

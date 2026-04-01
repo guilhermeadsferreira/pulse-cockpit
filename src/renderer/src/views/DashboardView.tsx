@@ -382,7 +382,8 @@ function CrossTeamInsightsPanel({ insights }: {
   )
 }
 
-function calc1on1Alert(perfil: Partial<PerfilFrontmatter>, frequenciaDias: number): { label: string; urgent: boolean } | null {
+function calc1on1Alert(perfil: Partial<PerfilFrontmatter>, frequenciaDias: number, relacao?: string): { label: string; urgent: boolean } | null {
+  if (relacao && relacao !== 'liderado') return null
   if (!perfil.ultimo_1on1) return null
   const daysSince = Math.floor((Date.now() - new Date(perfil.ultimo_1on1).getTime()) / 86_400_000)
   const daysLate  = daysSince - frequenciaDias
@@ -414,7 +415,7 @@ function PersonCard({
     (a) => a.status === 'open' && a.prazo != null && a.prazo < today
   )
 
-  const alert1on1  = calc1on1Alert(perfil, person.frequencia_1on1_dias)
+  const alert1on1  = calc1on1Alert(perfil, person.frequencia_1on1_dias, person.relacao)
   const alertColor = alert1on1?.urgent
     ? { text: 'var(--red)', bg: 'rgba(184,64,64,0.1)', border: 'rgba(184,64,64,0.3)' }
     : { text: 'var(--yellow, #d4a843)', bg: 'rgba(212,168,67,0.1)', border: 'rgba(212,168,67,0.3)' }
@@ -806,12 +807,14 @@ function TeamRiskPanel({
       if (fm.saude === 'vermelho') motivos.push('saúde vermelho')
       if (fm.necessita_1on1)       motivos.push('1:1 urgente')
 
-      // T4.1: 1:1 frequency alert
-      if (fm.ultimo_1on1) {
-        const dias = Math.floor((Date.now() - new Date(fm.ultimo_1on1).getTime()) / 86_400_000)
-        if (dias > (p.frequencia_1on1_dias + 3)) motivos.push(`sem 1:1 há ${dias}d`)
-      } else {
-        motivos.push('nunca teve 1:1')
+      // T4.1: 1:1 frequency alert (only for liderados — par/gestor 1:1 is not mandatory)
+      if (p.relacao === 'liderado') {
+        if (fm.ultimo_1on1) {
+          const dias = Math.floor((Date.now() - new Date(fm.ultimo_1on1).getTime()) / 86_400_000)
+          if (dias > (p.frequencia_1on1_dias + 3)) motivos.push(`sem 1:1 há ${dias}d`)
+        } else {
+          motivos.push('nunca teve 1:1')
+        }
       }
 
       // T4.3: overdue actions (with deadline)

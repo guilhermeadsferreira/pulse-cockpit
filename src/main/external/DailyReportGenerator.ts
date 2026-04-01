@@ -554,6 +554,7 @@ export class DailyReportGenerator {
 
     lines.push(`# Daily Report — ${formattedDate}`, '')
     lines.push(`> Dados coletados às ${collectedAt}.`, '')
+    lines.push(`> 💻 commit · 👀 review · 🔀 PR merged · 🔵 em andamento · 🚀 entregue`, '')
 
     // ── TL;DR executivo ──────────────────────────────────────
     {
@@ -691,10 +692,18 @@ export class DailyReportGenerator {
 
           const prKey = `${review.repo}#${review.prNumber}`
           const comments = commentsByPR.get(prKey) ?? []
-          for (const comment of comments) {
-            const body = comment.body.replace(/\n/g, ' ').trim()
-            if (body) {
-              lines.push(`  > "${body}"`)
+          if (comments.length > 0) {
+            const maxComments = 3
+            const shown = comments.slice(0, maxComments)
+            for (const comment of shown) {
+              const body = comment.body.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
+              if (body) {
+                const truncated = body.length > 280 ? body.slice(0, 277) + '...' : body
+                lines.push(`  > "${truncated}"`)
+              }
+            }
+            if (comments.length > maxComments) {
+              lines.push(`  > _(+${comments.length - maxComments} comentários)_`)
             }
           }
         }
