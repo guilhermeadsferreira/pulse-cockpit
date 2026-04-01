@@ -58,8 +58,12 @@ Plans:
   1. A aba de dados externos exibe avgCommentsPerReview, turnaround de primeira review, approval rate, collaboration score e % de PRs com mudancas de teste — com trend historico
   2. Insights do CrossAnalyzer incluem campo `causa_raiz` (awaiting review / changes requested / stale) e checam ausencias/ferias do perfil antes de flaggar desalinhamento
   3. Relatorios externos incluem um paragrafo de contexto narrativo injetado do perfil e uma comparacao com a media pessoal dos ultimos 3 meses
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Estender GitHubClient e GitHubMetrics com metricas avancadas (MTRC-01, MTRC-02, MTRC-03)
+- [ ] 03-02-PLAN.md — Enriquecer CrossAnalyzer com causa_raiz e checagem de ausencia (MTRC-04, MTRC-05)
+- [ ] 03-03-PLAN.md — Narrativa, baseline 3 meses nos relatorios e novas metricas na UI (MTRC-06, MTRC-07)
 
 ### Phase 4: Action System & UX Avancado
 **Goal**: Acoes se sincronizam com Jira, tem historico auditavel e prioridade automatica; o gestor ve insights cross-team e pauta pre-1:1 gerada automaticamente
@@ -82,5 +86,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Prompt Refinements | 5/5 | Complete   | 2026-03-31 |
 | 2. Pipeline & Schema | 0/2 | Not started | - |
-| 3. GitHub Metrics & CrossAnalyzer | 0/TBD | Not started | - |
+| 3. GitHub Metrics & CrossAnalyzer | 0/3 | Not started | - |
 | 4. Action System & UX Avancado | 0/TBD | Not started | - |
