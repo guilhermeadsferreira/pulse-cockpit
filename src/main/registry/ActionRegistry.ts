@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { Action, ActionStatus } from '../../renderer/src/types/ipc'
+import type { Action, ActionStatus, ActionStatusHistoryEntry } from '../../renderer/src/types/ipc'
 import type { AcaoComprometida } from '../prompts/ingestion.prompt'
 import type { OneOnOneResult, OneOnOneFollowup, OneOnOneAcaoLiderado } from '../prompts/1on1-deep.prompt'
 
@@ -56,6 +56,21 @@ export class ActionRegistry {
     let changed = false
     for (const action of actions) {
       if (action.id === id) {
+        this.appendHistory(action, status, 'manual')
+        action.status = status
+        if (status === 'done') action.concluidoEm = new Date().toISOString().slice(0, 10)
+        changed = true
+      }
+    }
+    if (changed) this.write(slug, actions)
+  }
+
+  updateStatusWithSource(slug: string, id: string, status: ActionStatus, source: ActionStatusHistoryEntry['source']): void {
+    const actions = this.list(slug)
+    let changed = false
+    for (const action of actions) {
+      if (action.id === id) {
+        this.appendHistory(action, status, source)
         action.status = status
         if (status === 'done') action.concluidoEm = new Date().toISOString().slice(0, 10)
         changed = true
@@ -102,6 +117,7 @@ export class ActionRegistry {
         status:           'open' as ActionStatus,
         criadoEm:         date,
         fonteArtefato:    artifactFileName,
+        statusHistory:    [{ status: 'open' as ActionStatus, date, source: 'ingestion' as const }],
       }
     })
 
@@ -130,13 +146,16 @@ export class ActionRegistry {
       if (!action) continue
 
       if (fu.status === 'cumprida') {
+        this.appendHistory(action, 'done', '1on1-deep')
         action.status = 'done'
         action.concluidoEm = new Date().toISOString().slice(0, 10)
         changed = true
       } else if (fu.status === 'em_andamento' && action.status === 'open') {
+        this.appendHistory(action, 'in_progress', '1on1-deep')
         action.status = 'in_progress'
         changed = true
       } else if (fu.status === 'abandonada') {
+        this.appendHistory(action, 'cancelled', '1on1-deep')
         action.status = 'cancelled'
         action.concluidoEm = new Date().toISOString().slice(0, 10)
         changed = true
@@ -188,6 +207,7 @@ export class ActionRegistry {
         status:           'open' as ActionStatus,
         criadoEm:         date,
         fonteArtefato:    artifactFileName,
+        statusHistory:    [{ status: 'open' as ActionStatus, date, source: '1on1-deep' as const }],
         // Extended v2 fields (backward compat — optional)
         ...({
           tipo:          acao.tipo,
@@ -201,6 +221,15 @@ export class ActionRegistry {
     if (newActions.length > 0) {
       this.write(slug, [...newActions, ...existing])
     }
+  }
+
+  private appendHistory(action: Action, newStatus: ActionStatus, source: ActionStatusHistoryEntry['source']): void {
+    if (!action.statusHistory) action.statusHistory = []
+    action.statusHistory.push({
+      status: newStatus,
+      date: new Date().toISOString().slice(0, 10),
+      source,
+    })
   }
 
   private inferSlug(nome: string, registeredSlugs: Set<string>): string | null {

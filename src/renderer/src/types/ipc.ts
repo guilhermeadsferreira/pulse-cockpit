@@ -191,6 +191,12 @@ export type ActionStatus   = 'open' | 'in_progress' | 'done' | 'cancelled'
 export type ActionOwner    = 'gestor' | 'liderado' | 'terceiro'
 export type ActionPriority = 'baixa' | 'media' | 'alta'
 
+export interface ActionStatusHistoryEntry {
+  status: ActionStatus
+  date: string        // YYYY-MM-DD
+  source: 'manual' | 'ingestion' | '1on1-deep' | 'jira-sync' | 'escalation' | 'system'
+}
+
 export interface Action {
   id:               string
   personSlug:       string
@@ -208,6 +214,7 @@ export interface Action {
   fonteArtefato?:   string
   pdi_objetivo_ref?: string
   contexto?:        string
+  statusHistory?:   ActionStatusHistoryEntry[]
 }
 
 export interface PerfilData {

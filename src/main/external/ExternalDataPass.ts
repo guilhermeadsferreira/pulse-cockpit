@@ -3,7 +3,9 @@ import { join } from 'path'
 import yaml from 'js-yaml'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
+import { ActionRegistry } from '../registry/ActionRegistry'
 import { DemandaRegistry } from '../registry/DemandaRegistry'
+import { JiraClient } from './JiraClient'
 import { fetchJiraMetrics, type JiraPersonMetrics } from './JiraMetrics'
 import { fetchGitHubMetrics, type GitHubPersonMetrics } from './GitHubMetrics'
 import { analyze, type CrossInsight, type CrossAnalyzerInput, type ProfileContext } from './CrossAnalyzer'
@@ -124,6 +126,27 @@ export class ExternalDataPass {
       this.updatePerfilSection(slug, snapshot)
       this.generateDemandasIfNeeded(slug, snapshot.insights, snapshot.atualizadoEm)
       log.info('ExternalDataPass.run: sucesso', { slug, hasJira: !!snapshot.jira, hasGithub: !!snapshot.github })
+
+      // Sync actions with Jira — auto-close actions whose issues are Done
+      if (jiraEnabled && settings.jiraBaseUrl && settings.jiraApiToken && settings.jiraEmail) {
+        try {
+          const jiraClient = new JiraClient({
+            baseUrl: settings.jiraBaseUrl,
+            email: settings.jiraEmail,
+            apiToken: settings.jiraApiToken,
+            projectKey: settings.jiraProjectKey,
+            boardId: settings.jiraBoardId,
+          })
+          const actionRegistry = new ActionRegistry(this.workspacePath)
+          const closedCount = await this.syncActionsWithJira(slug, jiraClient, actionRegistry)
+          if (closedCount > 0) {
+            log.info('Jira sync: acoes auto-fechadas', { slug, closedCount })
+          }
+        } catch (err) {
+          log.warn('Jira sync falhou (graceful)', { slug, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+
       return snapshot
     } catch (err) {
       log.error('ExternalDataPass.run: falhou', { slug, error: err instanceof Error ? err.message : String(err) })
@@ -311,6 +334,42 @@ export class ExternalDataPass {
       avgPRsMerged: countPRs > 0 ? Math.round(totalPRs / countPRs) : 0,
       avgReviews: countReviews > 0 ? Math.round(totalReviews / countReviews) : 0,
     }
+  }
+
+  // ── Jira Action Sync ───────────────────────────────────────────
+
+  private async syncActionsWithJira(
+    slug: string,
+    jiraClient: JiraClient,
+    actionRegistry: ActionRegistry,
+  ): Promise<number> {
+    const actions = actionRegistry.list(slug)
+    const openActions = actions.filter(a => a.status === 'open' || a.status === 'in_progress')
+    let closedCount = 0
+
+    for (const action of openActions) {
+      const jiraKeyRegex = /\b([A-Z][A-Z0-9]+-\d+)\b/
+      const textToSearch = `${action.texto ?? ''} ${action.descricao ?? ''} ${action.fonteArtefato ?? ''}`
+      const match = textToSearch.match(jiraKeyRegex)
+      if (!match) continue
+
+      const issueKey = match[1]
+      try {
+        const issues = await jiraClient.searchIssuesByEmail('', `key = "${issueKey}"`)
+        if (issues.length === 0) continue
+
+        const issue = issues[0]
+        if (issue.statusCategory === 'done') {
+          actionRegistry.updateStatusWithSource(slug, action.id, 'done', 'jira-sync')
+          closedCount++
+          log.info('acao auto-fechada via Jira sync', { slug, actionId: action.id, issueKey, issueStatus: issue.status })
+        }
+      } catch (err) {
+        log.warn('falha ao verificar issue Jira para acao', { slug, actionId: action.id, issueKey, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
+    return closedCount
   }
 
   // ── Cache ─────────────────────────────────────────────────────

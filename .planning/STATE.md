@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-04-01T01:41:10.145Z"
+status: Executing
+last_updated: "2026-04-01T02:09:00Z"
 progress:
   total_phases: 4
   completed_phases: 3
@@ -23,11 +23,14 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 ## Current Status
 
 **Milestone:** V2.1 — Completar camada UI e prompts da V2
-**Active phase:** Phase 999.5 — gemini-preprocessing (complete)
-**Last action:** Implemented Pass 0 with Gemini Flash preprocessing (2026-03-27) — Reduces Claude token consumption by ~60%
+**Active phase:** Phase 04 — action-system-ux-avancado (in progress)
+**Last action:** Completed 04-01 (Action Audit Trail + Jira Sync) — statusHistory[] em toda acao, auto-fechamento via Jira
 
 ## Decisions
 
+- [Phase 04-01]: statusHistory como campo opcional para backward-compat com acoes existentes
+- [Phase 04-01]: appendHistory centralizado inicializa array se ausente — zero risco para dados existentes
+- [Phase 04-01]: Jira sync usa searchIssuesByEmail com JQL customizado por issue key (plan referenciava metodo inexistente)
 - Extração do resumo QR via regex sobre content já carregado no ArtifactCard (sem novo IPC)
 - Bloco QR renderizado como `<pre>` (não MarkdownPreview) para fidelidade ao texto copiado
 - [Phase 999.3]: ts() helper adicionado inline no ClaudeRunner como função privada (não existia no arquivo original)
@@ -58,6 +61,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | 999.3 | Ingestion Performance Hybrid Model | ✅ Done |
 | 999.4 | OpenRouter Estágio 2 — Pass 1 modelo leve | ✅ Done |
 | 999.5 | Gemini Preprocessing Pass | ✅ Done |
+| 04 | Action System + UX Avancado | 🔄 In Progress (1/5 plans) |
 | 1 | PersonView Intelligence | ⬜ Pending |
 | 2 | Settings Reingest UX | ⬜ Pending |
 | 3 | Enriched Prompts | ⬜ Pending |
@@ -80,7 +84,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | Phase 02 P02 | 741 | 1 tasks | 2 files |
 | Phase 03 P01 | 114 | 2 tasks | 2 files |
 | Phase 03 P03 | 167 | 2 tasks | 5 files |
+| 04 | 01 | 2min | 2/2 | 3 |
 
 ## Next Action
 
-All phases 999.x complete. Next: Phase 1 (PersonView Intelligence) — exibir insights de 1:1, sinais de terceiros e botão QR no perfil de cada liderado.
+Phase 04 in progress. Plan 01 complete (Action Audit Trail + Jira Sync). Next: Plan 02 of Phase 04.
