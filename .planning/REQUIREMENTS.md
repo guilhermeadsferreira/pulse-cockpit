@@ -56,9 +56,9 @@ Requirements para este milestone. Cada um mapeia para phases do roadmap.
 
 ### GitHub Metrics & CrossAnalyzer
 
-- [ ] **MTRC-01**: Code review depth: avgCommentsPerReview, turnaround de primeira review, approval rate
-- [ ] **MTRC-02**: Collaboration score (0-100): co-authored commits, PRs cross-repo, mentions em issues
-- [ ] **MTRC-03**: Test coverage trend: % de PRs com mudancas de teste, trend historico
+- [x] **MTRC-01**: Code review depth: avgCommentsPerReview, turnaround de primeira review, approval rate
+- [x] **MTRC-02**: Collaboration score (0-100): co-authored commits, PRs cross-repo, mentions em issues
+- [x] **MTRC-03**: Test coverage trend: % de PRs com mudancas de teste, trend historico
 - [ ] **MTRC-04**: CrossAnalyzer inclui campo `causa_raiz` nos insights (awaiting review vs changes vs stale)
 - [ ] **MTRC-05**: Desalinhamento checado contra contexto do perfil (ferias, licenca) antes de flaggar
 - [ ] **MTRC-06**: Relatorios incluem narrative context paragraph injetado do perfil
@@ -118,9 +118,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PIPE-01 | Phase 2 | Complete |
 | PIPE-02 | Phase 2 | Complete |
 | PIPE-03 | Phase 2 | Complete |
-| MTRC-01 | Phase 3 | Pending |
-| MTRC-02 | Phase 3 | Pending |
-| MTRC-03 | Phase 3 | Pending |
+| MTRC-01 | Phase 3 | Complete |
+| MTRC-02 | Phase 3 | Complete |
+| MTRC-03 | Phase 3 | Complete |
 | MTRC-04 | Phase 3 | Pending |
 | MTRC-05 | Phase 3 | Pending |
 | MTRC-06 | Phase 3 | Pending |

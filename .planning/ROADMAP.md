@@ -61,8 +61,8 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Estender GitHubClient e GitHubMetrics com metricas avancadas (MTRC-01, MTRC-02, MTRC-03)
-- [ ] 03-02-PLAN.md — Enriquecer CrossAnalyzer com causa_raiz e checagem de ausencia (MTRC-04, MTRC-05)
+- [x] 03-01-PLAN.md — Estender GitHubClient e GitHubMetrics com metricas avancadas (MTRC-01, MTRC-02, MTRC-03)
+- [x] 03-02-PLAN.md — Enriquecer CrossAnalyzer com causa_raiz e checagem de ausencia (MTRC-04, MTRC-05)
 - [ ] 03-03-PLAN.md — Narrativa, baseline 3 meses nos relatorios e novas metricas na UI (MTRC-06, MTRC-07)
 
 ### Phase 4: Action System & UX Avancado
