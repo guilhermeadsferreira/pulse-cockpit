@@ -1,6 +1,63 @@
 import type { IngestionAIResult } from '../prompts/ingestion.prompt'
 import type { CerimoniaSinalResult } from '../prompts/cerimonia-sinal.prompt'
 import type { OneOnOneResult } from '../prompts/1on1-deep.prompt'
+import { ASPECTO_VALUES } from '../prompts/constants'
+
+// ─── Normalização defensiva de enums ────────────────────────────────────────
+// Aplica lowercase+trim em campos de enum ANTES da validação.
+// Modifica o objeto in-place para que downstream (ArtifactWriter) receba valores normalizados.
+
+function normalizeStr(v: unknown): string | undefined {
+  if (typeof v === 'string') return v.toLowerCase().trim()
+  return undefined
+}
+
+function normalizeEnumFields(obj: Record<string, unknown>): void {
+  // Top-level enums
+  if (typeof obj.indicador_saude === 'string') obj.indicador_saude = normalizeStr(obj.indicador_saude)
+  if (typeof obj.confianca === 'string') obj.confianca = normalizeStr(obj.confianca)
+  if (typeof obj.tipo === 'string') obj.tipo = normalizeStr(obj.tipo)
+  if (typeof obj.tendencia_emocional === 'string') obj.tendencia_emocional = normalizeStr(obj.tendencia_emocional)
+
+  // sentimentos[].valor
+  if (Array.isArray(obj.sentimentos)) {
+    for (const s of obj.sentimentos as Record<string, unknown>[]) {
+      if (s && typeof s === 'object' && typeof s.valor === 'string') {
+        s.valor = normalizeStr(s.valor)
+      }
+      if (s && typeof s === 'object' && typeof s.aspecto === 'string') {
+        s.aspecto = normalizeStr(s.aspecto)
+      }
+    }
+  }
+
+  // pontos_de_atencao[].frequencia
+  if (Array.isArray(obj.pontos_de_atencao)) {
+    for (const p of obj.pontos_de_atencao as Record<string, unknown>[]) {
+      if (p && typeof p === 'object' && typeof p.frequencia === 'string') {
+        p.frequencia = normalizeStr(p.frequencia)
+      }
+    }
+  }
+
+  // followup_acoes[].status
+  if (Array.isArray(obj.followup_acoes)) {
+    for (const f of obj.followup_acoes as Record<string, unknown>[]) {
+      if (f && typeof f === 'object' && typeof f.status === 'string') {
+        f.status = normalizeStr(f.status)
+      }
+    }
+  }
+
+  // acoes_liderado[].tipo
+  if (Array.isArray(obj.acoes_liderado)) {
+    for (const a of obj.acoes_liderado as Record<string, unknown>[]) {
+      if (a && typeof a === 'object' && typeof a.tipo === 'string') {
+        a.tipo = normalizeStr(a.tipo)
+      }
+    }
+  }
+}
 
 const REQUIRED_FIELDS: (keyof IngestionAIResult)[] = [
   'tipo',
@@ -48,6 +105,7 @@ export function validateIngestionResult(data: unknown): ValidationResult {
   }
 
   const obj = data as Record<string, unknown>
+  normalizeEnumFields(obj)
 
   for (const field of REQUIRED_FIELDS) {
     const value = obj[field]
@@ -70,8 +128,13 @@ export function validateIngestionResult(data: unknown): ValidationResult {
         const s = (obj.sentimentos as Record<string, unknown>[])[i]
         if (!s || typeof s !== 'object' || !('valor' in s) || !('aspecto' in s)) {
           typeErrors.push(`sentimentos[${i}]: faltando valor ou aspecto`)
-        } else if (!validValores.includes(s.valor as string)) {
-          typeErrors.push(`sentimentos[${i}].valor inválido: "${s.valor}"`)
+        } else {
+          if (!validValores.includes(s.valor as string)) {
+            typeErrors.push(`sentimentos[${i}].valor inválido: "${s.valor}"`)
+          }
+          if (typeof s.aspecto === 'string' && !(ASPECTO_VALUES as readonly string[]).includes(s.aspecto as string)) {
+            console.warn(`[SchemaValidator] sentimentos[${i}].aspecto fora do vocabulário: "${s.aspecto}" — esperado: ${ASPECTO_VALUES.join(', ')}`)
+          }
         }
       }
     }
@@ -155,6 +218,7 @@ export function validateCerimoniaSinalResult(data: unknown): ValidationResult {
   }
 
   const obj = data as Record<string, unknown>
+  normalizeEnumFields(obj)
 
   for (const field of CERIMONIA_SINAL_REQUIRED_FIELDS) {
     const value = obj[field]
@@ -231,6 +295,7 @@ export function validateOneOnOneResult(data: unknown): ValidationResult {
   }
 
   const obj = data as Record<string, unknown>
+  normalizeEnumFields(obj)
 
   for (const field of ONE_ON_ONE_REQUIRED_FIELDS) {
     if (obj[field] === undefined || obj[field] === null) {

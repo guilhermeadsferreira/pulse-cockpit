@@ -83,3 +83,22 @@ export const SAUDE_ENUM   = '"verde" | "amarelo" | "vermelho"'
 export const CONFIANCA_ENUM = '"alta" | "media" | "baixa"'
 export const SENTIMENTO_ENUM = '"positivo" | "neutro" | "ansioso" | "frustrado" | "desengajado"'
 export const ENGAJAMENTO_ENUM = '1 (muito baixo) a 5 (muito alto)'
+
+// ─── Enum de aspecto para sentimentos ───────────────────────────────────────
+// Vocabulário fechado — substitui o campo string livre em SentimentoItem.aspecto
+
+export const ASPECTO_VALUES = ['carreira', 'entrega', 'relacionamento', 'pessoal', 'processo', 'tecnico', 'lideranca', 'geral'] as const
+export type Aspecto = typeof ASPECTO_VALUES[number]
+export const ASPECTO_ENUM = '"carreira" | "entrega" | "relacionamento" | "pessoal" | "processo" | "tecnico" | "lideranca" | "geral"'
+
+// ─── Taxonomia de temas recorrentes ─────────────────────────────────────────
+// Vocabulário fechado para temas_detectados e temas_atualizados
+
+export const TEMAS_TAXONOMY = [
+  'desenvolvimento-tecnico', 'carreira', 'comunicacao', 'entregas',
+  'colaboracao', 'processos', 'qualidade', 'lideranca',
+  'engajamento', 'feedback', 'pdi', 'relacionamento',
+  'autonomia', 'prioridades', 'onboarding', 'wellbeing',
+] as const
+export type Tema = typeof TEMAS_TAXONOMY[number]
+export const TEMAS_TAXONOMY_TEXTO = `Use APENAS temas desta lista: ${TEMAS_TAXONOMY.join(', ')}. Combine no máximo 6 por artefato.`

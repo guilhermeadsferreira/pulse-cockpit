@@ -232,6 +232,42 @@ OMITIR obrigatoriamente: tendência emocional, insights de carreira/PDI, anális
 PRIVACIDADE OBRIGATÓRIA: Se o 1:1 tocou temas pessoais, saúde, família, situação financeira ou qualquer dado sensível, use exclusivamente a fórmula: "Temas pessoais: alinhados. Continuaremos acompanhando." — nunca descreva o conteúdo, mesmo que de forma genérica.
 Se não houver ações do liderado ou do gestor neste 1:1, omitir a seção correspondente (não gerar bullets vazios).
 
+## Exemplo de output esperado
+
+Para um 1:1 onde havia 1 ação aberta do liderado, o gestor fez uma sugestão de processo, e houve menção ao PDI:
+
+\`\`\`json
+{
+  "followup_acoes": [
+    {"acao_original": "Investigar causa raiz da lentidão no endpoint de auth", "acao_id": "act-001", "status": "em_andamento", "evidencia": "Ana mencionou que identificou o gargalo no middleware de validação de tokens e está testando uma solução com cache de sessões"}
+  ],
+  "acoes_liderado": [
+    {"descricao": "Implementar cache de sessões no middleware de auth e medir impacto na latência P95", "tipo": "tarefa_explicita", "prazo_iso": "2026-04-04", "origem_pauta": "liderado", "terceiro_nome": null, "contexto": "Surgiu quando Ana explicou a solução que está testando para o gargalo de auth"}
+  ],
+  "acoes_gestor": [
+    {"descricao": "Alinhar com time de infra sobre limites de memória do cache de sessões antes da implementação", "prazo_iso": null}
+  ],
+  "insights_1on1": [
+    {"categoria": "carreira", "conteudo": "Ana expressou interesse em assumir ownership do módulo de auth completo — quer ser referência técnica do time nessa área", "relevancia": "alta", "acao_implicita": "Avaliar se ownership do módulo de auth pode ser formalizado como objetivo de PDI"}
+  ],
+  "sugestoes_gestor": [
+    {"descricao": "Documentar a arquitetura do middleware de auth para facilitar onboarding de novos membros", "resposta_liderado": "aceitou_tacito", "gerar_acao": true}
+  ],
+  "correlacoes_terceiros": [],
+  "tendencia_emocional": "estavel",
+  "nota_tendencia": "Engajamento consistente com os últimos 1:1s. Ana demonstra energia positiva com a investigação técnica e interesse em crescer na área de auth.",
+  "pdi_update": {
+    "houve_mencao_pdi": true,
+    "objetivos_mencionados": ["Desenvolver expertise em segurança e autenticação"],
+    "novo_objetivo_sugerido": null,
+    "progresso_observado": "Está liderando a investigação do gargalo de auth com autonomia — demonstra aprofundamento técnico na área"
+  },
+  "resumo_executivo_rh": "Reunião focada no progresso da investigação de performance do serviço de autenticação e no interesse de Ana em expandir sua atuação nessa área.\\n\\n• Ana Lima: implementar cache de sessões no middleware de auth e medir impacto na latência P95 até 04/04\\n• Ana Lima: documentar arquitetura do middleware de auth\\n\\n• ${gestorLabel}: alinhar com time de infra sobre limites de memória do cache\\n\\n• Próximos passos:\\n• Acompanhar resultado da implementação do cache de sessões\\n• Avaliar formalização do ownership do módulo de auth",
+  "auto_percepcao": "alinhada_com_feedback",
+  "prioridade_atualizada": []
+}
+\`\`\`
+
 JSON esperado:
 {
   "followup_acoes": [

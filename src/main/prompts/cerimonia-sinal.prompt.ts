@@ -1,5 +1,5 @@
 import type { IndicadorSaude, NivelConfianca, SentimentoDetectado, NivelEngajamento, SentimentoItem } from './constants'
-import { NECESSITA_1ON1_REGRA } from './constants'
+import { NECESSITA_1ON1_REGRA, ASPECTO_ENUM, TEMAS_TAXONOMY_TEXTO } from './constants'
 
 export interface CerimoniaSinalPromptParams {
   teamRegistry: string        // serializeForPrompt() output
@@ -134,12 +134,12 @@ ${perfilMdRaw ? `A pessoa tem pontos de atenção e temas recorrentes no perfil.
   - "Comprometeu investigação de bug crítico na sprint passada sem atualização — citado como item sem follow-up na retro, gerou retrabalho"
   - "Interrompeu colega duas vezes durante explicação técnica na reunião de arquitetura — prejudicou a dinâmica da discussão"
 
-"temas_detectados": temas recorrentes identificados (ex: "comunicação assertiva", "liderança técnica", "gestão de tempo").
+"temas_detectados": temas recorrentes identificados. ${TEMAS_TAXONOMY_TEXTO}
   Use esses para enriquecer os Temas Recorrentes do perfil.
 
-"sentimentos": array de objetos com estado emocional e aspecto. Cada objeto: {"valor": "positivo|neutro|ansioso|frustrado|desengajado", "aspecto": "ex: carreira, entrega, relacionamento, pessoal, geral"}. Use múltiplos itens quando sentimentos distintos coexistem em aspectos diferentes. Se não há sinais claros, use [{"valor": "neutro", "aspecto": "geral"}]. Array nunca vazio.
+"sentimentos": array de objetos com estado emocional e aspecto. Cada objeto: {"valor": "positivo|neutro|ansioso|frustrado|desengajado", "aspecto": ${ASPECTO_ENUM}}. Use múltiplos itens quando sentimentos distintos coexistem em aspectos diferentes. Se não há sinais claros, use [{"valor": "neutro", "aspecto": "geral"}]. Array nunca vazio.
 
-"nivel_engajamento": 1 (ausente/silencioso) a 5 (protagonizou a cerimônia). Baseie-se em quantidade e qualidade das contribuições.
+"nivel_engajamento": 1 (ausente/silencioso) a 5 (protagonizou a cerimônia). Baseie-se em quantidade e qualidade das contribuições. Participação suficiente = pessoa fez pelo menos 1 contribuição substantiva (proposta, argumento, decisão) na cerimônia, não apenas presença passiva.
 
 "indicador_saude": baseado EXCLUSIVAMENTE no que foi observado NESTA cerimônia. "verde" = engajamento saudável, contribuições positivas. "amarelo" = sinais leves de preocupação. "vermelho" = sinal grave e inequívoco. CALIBRE pelo cargo/nível (${pessoaCargo}): para pessoas em nível sênior ou de liderança, o bar de "verde" é mais alto — espera-se contribuição ativa, tomada de posição e influência nas discussões. Para níveis júnior/pleno em início de trajetória, participação mais passiva com sinais de aprendizado pode ser "verde". Mesmos comportamentos podem ter indicadores diferentes dependendo do nível.
 
@@ -155,6 +155,31 @@ ${perfilMdRaw ? `A pessoa tem pontos de atenção e temas recorrentes no perfil.
   - "baixa": participação mínima, poucas evidências ou cerimônia muito curta
 
 ${perfilMdRaw === null ? `"resumo_evolutivo": escreva 3–5 frases narrativas em português profissional sobre a participação e perfil observado de ${pessoaNome} nesta cerimônia. Inclua: comportamento observado, pontos fortes, o que merece atenção futura. Calibre pelo papel (${pessoaRelacao}). Este campo é obrigatório pois não existe perfil anterior desta pessoa.` : '"resumo_evolutivo": null — já existe perfil anterior, não gere narrativa.'}
+
+## Exemplo de output esperado
+
+Para uma planning onde o liderado contribuiu ativamente com estimativas e propôs quebra de épico:
+
+\`\`\`json
+{
+  "sentimentos": [{"valor": "positivo", "aspecto": "entrega"}],
+  "nivel_engajamento": 4,
+  "indicador_saude": "verde",
+  "motivo_indicador": "Contribuição ativa com estimativas fundamentadas e proposta de quebra de épico — engajamento acima do esperado para o nível",
+  "soft_skills_observadas": ["Propôs proativamente a quebra do épico de migração em 3 tasks independentes, facilitando o planejamento do time"],
+  "hard_skills_observadas": ["Estimou esforço da migração de banco com base em experiência anterior com Postgres — estimativa validada pelo tech lead"],
+  "pontos_de_desenvolvimento": [],
+  "feedbacks_positivos": ["Bruno quebrou épico complexo de migração em tasks estimáveis e independentes — acelerou a planning em 15 minutos"],
+  "feedbacks_negativos": [],
+  "temas_detectados": ["entregas", "colaboracao"],
+  "sinal_evolucao": false,
+  "evidencia_evolucao": null,
+  "necessita_1on1": false,
+  "motivo_1on1": null,
+  "confianca": "alta",
+  "resumo_evolutivo": null
+}
+\`\`\`
 
 JSON esperado:
 {
