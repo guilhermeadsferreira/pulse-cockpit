@@ -1,6 +1,6 @@
 {
   "name": "pulse-cockpit",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Segundo cérebro para gestores de tecnologia",
   "main": "out/main/index.js",
   "scripts": {

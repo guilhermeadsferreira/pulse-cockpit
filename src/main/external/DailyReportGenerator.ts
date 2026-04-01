@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
 import { JiraClient, JiraConfig, type DailyStandupItem, type JiraIssue, type JiraChangelogEntry } from './JiraClient'
 import { GitHubClient, GitHubConfig, type GitHubCommit, type GitHubPR, type GitHubReview, type GitHubReviewComment } from './GitHubClient'
+import { runClaudePrompt } from '../ingestion/ClaudeRunner'
+import { buildDailyAnalysisPrompt } from '../prompts/daily-analysis.prompt'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('DailyReportGenerator')
@@ -104,11 +106,24 @@ export class DailyReportGenerator {
     // 2. Fetch yesterday activity + cycle time for ALL people in parallel (batches of 3)
     const personReports = await this.fetchAllPeopleData(people, settings, sprintIssuesByPerson, jiraClient)
 
-    // 3. Build report with deterministic alerts
-    const content = this.buildReport(personReports, sprintOverview, today)
+    // 3. Build deterministic report
+    const { content, analysisInput } = this.buildReport(personReports, sprintOverview, today)
+
+    // 4. Enrich with Haiku analysis (graceful degradation)
+    let finalContent = content
+    if (settings.claudeBinPath) {
+      try {
+        const aiSection = await this.runHaikuAnalysis(settings, analysisInput)
+        if (aiSection) {
+          finalContent = content + aiSection
+        }
+      } catch (err) {
+        log.warn('Haiku analysis falhou (graceful)', { error: err instanceof Error ? err.message : String(err) })
+      }
+    }
 
     mkdirSync(this.relatoriosDir, { recursive: true })
-    writeFileSync(filePath, content, 'utf-8')
+    writeFileSync(filePath, finalContent, 'utf-8')
     log.info('daily report gerado', { date: today, path: filePath })
     return filePath
   }
@@ -481,13 +496,56 @@ export class DailyReportGenerator {
     return `${parseInt(day, 10)} de ${MESES[monthNum - 1]} de ${year}`
   }
 
+  // ── Haiku analysis ───────────────────────────────────────────
+
+  private async runHaikuAnalysis(
+    settings: AppSettings,
+    analysisInput: { sprintOverview: string; perPersonSummary: string; alerts: string },
+  ): Promise<string | null> {
+    const prompt = buildDailyAnalysisPrompt(analysisInput)
+    const model = settings.claudeDefaultModel ?? 'haiku'
+
+    log.info('Haiku analysis: iniciando', { model, promptBytes: Buffer.byteLength(prompt, 'utf8') })
+
+    const result = await runClaudePrompt(settings.claudeBinPath, prompt, 60_000, 0, model)
+
+    if (!result.success || !result.data) {
+      log.warn('Haiku analysis: falhou', { error: result.error })
+      return null
+    }
+
+    const data = result.data as { observacoes?: Array<{ texto: string; pessoa: string | null; tipo: string }> }
+    if (!data.observacoes || !Array.isArray(data.observacoes) || data.observacoes.length === 0) {
+      log.warn('Haiku analysis: resposta sem observações válidas')
+      return null
+    }
+
+    const lines: string[] = ['', '## Observações (IA)', '']
+    const typeIcons: Record<string, string> = {
+      padrao: '🔍',
+      risco: '⚠️',
+      destaque: '⭐',
+      sugestao: '💡',
+    }
+
+    for (const obs of data.observacoes.slice(0, 6)) {
+      const icon = typeIcons[obs.tipo] ?? '🧠'
+      const pessoa = obs.pessoa ? ` [${obs.pessoa}]` : ''
+      lines.push(`- ${icon}${pessoa} ${obs.texto}`)
+    }
+    lines.push('')
+
+    log.info('Haiku analysis: sucesso', { observacoes: data.observacoes.length })
+    return lines.join('\n')
+  }
+
   // ── Report builder ──────────────────────────────────────────
 
   private buildReport(
     personReports: PersonDailyData[],
     sprintOverview: SprintOverview | null,
     today: string,
-  ): string {
+  ): { content: string; analysisInput: { sprintOverview: string; perPersonSummary: string; alerts: string } } {
     const lines: string[] = []
     const formattedDate = this.formatDateLong(today)
     const collectedAt = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -659,7 +717,49 @@ export class DailyReportGenerator {
       lines.push('')
     }
 
-    return lines.join('\n')
+    // Build analysis input for Haiku
+    const sprintSummaryText = sprintOverview
+      ? `${sprintOverview.nome}: ${sprintOverview.totalDone}/${sprintOverview.totalIssues} issues, ${sprintOverview.totalSPDone}/${sprintOverview.totalSP} SP\n` +
+        sprintOverview.byPerson.map(p => `  ${p.nome}: ${p.done}/${p.total} tasks, ${p.spDone}/${p.spTotal} SP`).join('\n')
+      : ''
+
+    const perPersonLines: string[] = []
+    for (const report of personReports) {
+      const { activity } = report
+      const parts: string[] = [`${report.nome}:`]
+
+      if (activity.jiraActivity.length > 0) {
+        parts.push(`  Jira ontem: ${activity.jiraActivity.map(i => `${i.issueKey} (${i.status})`).join(', ')}`)
+      }
+      if (activity.githubCommits.length > 0) {
+        parts.push(`  Commits: ${activity.githubCommits.length} em ${[...new Set(activity.githubCommits.map(c => c.repo))].join(', ')}`)
+      }
+      if (activity.githubReviews.length > 0) {
+        parts.push(`  Reviews: ${activity.githubReviews.length} (${activity.githubReviews.map(r => `${r.repo}#${r.prNumber} ${r.state}`).join(', ')})`)
+      }
+      if (activity.githubPRsMerged.length > 0) {
+        parts.push(`  PRs merged: ${activity.githubPRsMerged.map(p => `${p.repo}#${p.number}`).join(', ')}`)
+      }
+      if (report.activeTasks.length > 0) {
+        parts.push(`  Trabalhando: ${report.activeTasks.map(t => `${t.key} (${t.status}, ${t.daysInStatus}d)`).join(', ')}`)
+      }
+      if (report.blockers.length > 0) {
+        parts.push(`  Bloqueios: ${report.blockers.map(b => `${b.key} (${b.days}d)`).join(', ')}`)
+      }
+      if (!activity.jiraActivity.length && !activity.githubCommits.length && !activity.githubReviews.length) {
+        parts.push('  Sem atividade ontem')
+      }
+
+      perPersonLines.push(parts.join('\n'))
+    }
+
+    const analysisInput = {
+      sprintOverview: sprintSummaryText,
+      perPersonSummary: perPersonLines.join('\n\n'),
+      alerts: alerts.join('\n'),
+    }
+
+    return { content: lines.join('\n'), analysisInput }
   }
 }
 
