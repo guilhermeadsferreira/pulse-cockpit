@@ -6,7 +6,7 @@ import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { DemandaRegistry } from '../registry/DemandaRegistry'
 import { fetchJiraMetrics, type JiraPersonMetrics } from './JiraMetrics'
 import { fetchGitHubMetrics, type GitHubPersonMetrics } from './GitHubMetrics'
-import { analyze, type CrossInsight, type CrossAnalyzerInput } from './CrossAnalyzer'
+import { analyze, type CrossInsight, type CrossAnalyzerInput, type ProfileContext } from './CrossAnalyzer'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('ExternalDataPass')
@@ -136,13 +136,62 @@ export class ExternalDataPass {
       previousGithub: previous?.github ?? null,
     }
 
-    const insights = analyze(analysisInput)
+    const profileContext = this.extractProfileContext(person.slug)
+    const insights = analyze(analysisInput, undefined, person.nivel, profileContext)
 
     return {
       jira: jiraMetrics,
       github: githubMetrics,
       insights,
       atualizadoEm: new Date().toISOString(),
+    }
+  }
+
+  // ── Profile Context (ausência) ─────────────────────────────────
+
+  private extractProfileContext(slug: string): ProfileContext {
+    const defaultCtx: ProfileContext = { emFerias: false, emLicenca: false }
+
+    // Check notas_manuais from PersonConfig
+    const registry = new PersonRegistry(this.workspacePath)
+    const person = registry.get(slug)
+    const notasManuais = person?.notas_manuais ?? ''
+
+    // Check perfil.md for absence patterns in ## Notas section
+    const perfilPath = join(this.workspacePath, 'pessoas', slug, 'perfil.md')
+    let perfilNotas = ''
+    if (existsSync(perfilPath)) {
+      try {
+        const content = readFileSync(perfilPath, 'utf-8')
+        const notasMatch = content.match(/## Notas\s*\n([\s\S]*?)(?=\n##|$)/)
+        if (notasMatch) {
+          const notasLines = notasMatch[1].trim().split('\n')
+          perfilNotas = notasLines.slice(-5).join('\n')
+        }
+      } catch {
+        // graceful degradation
+      }
+    }
+
+    const textToCheck = `${notasManuais}\n${perfilNotas}`.toLowerCase()
+
+    const emFerias = /f[eé]rias/i.test(textToCheck)
+    const emLicenca = /licen[cç]a/i.test(textToCheck)
+    const ausente = /ausente|afastad[oa]/i.test(textToCheck)
+
+    if (!emFerias && !emLicenca && !ausente) {
+      return defaultCtx
+    }
+
+    let ausenciaDescricao: string | undefined
+    if (emFerias) ausenciaDescricao = 'em férias'
+    else if (emLicenca) ausenciaDescricao = 'em licença'
+    else if (ausente) ausenciaDescricao = 'ausente/afastado'
+
+    return {
+      emFerias: emFerias || ausente,
+      emLicenca,
+      ausenciaDescricao,
     }
   }
 

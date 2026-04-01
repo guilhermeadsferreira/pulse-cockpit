@@ -2,12 +2,19 @@ import type { JiraPersonMetrics } from './JiraMetrics'
 import type { GitHubPersonMetrics } from './GitHubMetrics'
 
 export interface CrossInsight {
-  tipo: 'sobrecarga' | 'desalinhamento' | 'gap_comunicacao' | 'crescimento' | 'bloqueio' | 'risco_sprint'
+  tipo: 'sobrecarga' | 'desalinhamento' | 'gap_comunicacao' | 'crescimento' | 'bloqueio' | 'risco_sprint' | 'destaque'
   severidade: 'alta' | 'media' | 'baixa'
   descricao: string
   evidencia: string
   acaoSugerida?: string
   gerarDemanda?: boolean
+  causa_raiz?: 'awaiting_review' | 'changes_requested' | 'stale' | 'blocked' | 'overloaded' | 'vacation' | 'leave' | null
+}
+
+export interface ProfileContext {
+  emFerias: boolean
+  emLicenca: boolean
+  ausenciaDescricao?: string
 }
 
 export interface CrossAnalyzerInput {
@@ -37,9 +44,15 @@ const DEFAULT_THRESHOLDS: CrossAnalyzerThresholds = {
   risco_sprint_dias_restantes: 3,
 }
 
-export function analyze(input: CrossAnalyzerInput, thresholds?: Partial<CrossAnalyzerThresholds>): CrossInsight[] {
+export function analyze(
+  input: CrossAnalyzerInput,
+  thresholds?: Partial<CrossAnalyzerThresholds>,
+  nivel?: string,
+  profileContext?: ProfileContext,
+): CrossInsight[] {
   const t = { ...DEFAULT_THRESHOLDS, ...thresholds }
   const insights: CrossInsight[] = []
+  const skipActivityAnalysis = !!(profileContext?.emFerias || profileContext?.emLicenca)
 
   if (input.jira) {
     insights.push(...analyzeOverload(input.jira, t))
@@ -51,13 +64,15 @@ export function analyze(input: CrossAnalyzerInput, thresholds?: Partial<CrossAna
     insights.push(...analyzePRAccumulation(input.github, t))
   }
 
-  if (input.jira && input.github) {
+  if (!skipActivityAnalysis && input.jira && input.github) {
     insights.push(...analyzeCommunicationGap(input.jira, input.github))
   }
 
   if (input.previousGithub && input.github) {
-    insights.push(...analyzeGrowth(input.github, input.previousGithub, t))
-    insights.push(...analyzeActivityDrop(input.github, input.previousGithub, t))
+    if (!skipActivityAnalysis) {
+      insights.push(...analyzeGrowth(input.github, input.previousGithub, t))
+    }
+    insights.push(...analyzeActivityDrop(input.github, input.previousGithub, t, profileContext))
   }
 
   return insights
@@ -75,6 +90,7 @@ function analyzeOverload(jira: JiraPersonMetrics, t: CrossAnalyzerThresholds): C
       evidencia: `Jira: ${jira.issuesAbertas} issues abertas, workloadScore="${jira.workloadScore}"`,
       acaoSugerida: 'Verificar distribuição de workload no 1:1 — considerar reagrupar ou escalar pendências',
       gerarDemanda: false,
+      causa_raiz: 'overloaded',
     })
   } else if (jira.issuesAbertas >= t.sobrecarga_issues && jira.workloadScore === 'medio') {
     insights.push({
@@ -83,6 +99,7 @@ function analyzeOverload(jira: JiraPersonMetrics, t: CrossAnalyzerThresholds): C
       descricao: `${jira.issuesAbertas} issues abertas — acima do threshold (${t.sobrecarga_issues})`,
       evidencia: `Jira: ${jira.issuesAbertas} issues abertas, distribuição: ${JSON.stringify(jira.distribuicaoPorTipo)}`,
       acaoSugerida: 'Acompanhar no próximo 1:1 — workload está no limite',
+      causa_raiz: 'overloaded',
     })
   }
 
@@ -107,6 +124,7 @@ function analyzeBlockers(jira: JiraPersonMetrics): CrossInsight[] {
         ? `Escalar ${blocker.key} — parado há ${blockedDays} dias`
         : `Acompanhar ${blocker.key} no próximo 1:1`,
       gerarDemanda: blockedDays > 5,
+      causa_raiz: 'blocked',
     })
   }
 
@@ -137,6 +155,7 @@ function analyzeSprintRisk(jira: JiraPersonMetrics, t: CrossAnalyzerThresholds):
           descricao: `Sprint "${sprint.nome}": ${Math.round(naoIniciadasRatio * 100)}% não concluído com ${daysLeft} dias restantes`,
           evidencia: `${sprint.issuesConcluidas}/${sprint.totalIssues} issues concluídas, ${sprint.entregue}/${sprint.comprometido} SP entregues`,
           acaoSugerida: 'Priorizar entregáveis críticos — revisar escopo da sprint',
+          causa_raiz: null,
         })
       }
     }
@@ -155,6 +174,7 @@ function analyzePRAccumulation(github: GitHubPersonMetrics, t: CrossAnalyzerThre
       descricao: `${github.prsAbertos} PRs abertos há ${github.tempoMedioAbertoDias} dias em média`,
       evidencia: `GitHub: ${github.prsAbertos} PRs abertos, tempo médio aberto: ${github.tempoMedioAbertoDias} dias`,
       acaoSugerida: 'Revisar PRs acumulados — verificar se estão aguardando review ou implementação',
+      causa_raiz: github.tempoMedioAbertoDias > 7 ? 'stale' : 'awaiting_review',
     })
   }
 
@@ -171,6 +191,7 @@ function analyzeCommunicationGap(jira: JiraPersonMetrics, github: GitHubPersonMe
       descricao: 'Issues abertas no Jira mas nenhuma atividade de código em 30 dias',
       evidencia: `Jira: ${jira.issuesAbertas} issues abertas, GitHub: 0 commits nos últimos 30 dias`,
       acaoSugerida: 'Verificar se atividade está em outro repositório ou se há impedimento técnico',
+      causa_raiz: 'stale',
     })
   }
 
@@ -181,6 +202,7 @@ function analyzeCommunicationGap(jira: JiraPersonMetrics, github: GitHubPersonMe
       descricao: 'PRs abertos sem issues correspondentes no Jira',
       evidencia: `GitHub: ${github.prsAbertos} PRs abertos, Jira: 0 issues abertas`,
       acaoSugerida: 'Verificar vinculação entre PRs e issues — possível trabalho não rastreado no Jira',
+      causa_raiz: null,
     })
   }
 
@@ -205,6 +227,7 @@ function analyzeGrowth(
       descricao: `Commits aumentaram ${increase}% vs mês anterior`,
       evidencia: `GitHub: ${currCommits} commits (30d) vs ${prevCommits} (mês anterior)`,
       acaoSugerida: 'Reconhecer evolução no próximo 1:1',
+      causa_raiz: null,
     })
   }
 
@@ -219,6 +242,7 @@ function analyzeGrowth(
       descricao: `PRs merged aumentaram ${increase}% vs mês anterior`,
       evidencia: `GitHub: ${currPRs} PRs merged (30d) vs ${prevPRs} (mês anterior)`,
       acaoSugerida: 'Sinal de aumento de entrega — avaliar impacto na qualidade',
+      causa_raiz: null,
     })
   }
 
@@ -229,33 +253,53 @@ function analyzeActivityDrop(
   current: GitHubPersonMetrics,
   previous: Partial<GitHubPersonMetrics>,
   t: CrossAnalyzerThresholds,
+  profileContext?: ProfileContext,
 ): CrossInsight[] {
   const insights: CrossInsight[] = []
+  const skipActivityAnalysis = !!(profileContext?.emFerias || profileContext?.emLicenca)
 
   const prevCommits = previous.commits30d ?? 0
   const currCommits = current.commits30d
 
   if (prevCommits >= 5 && currCommits < prevCommits * t.queda_atividade_ratio) {
     const decrease = Math.round(((prevCommits - currCommits) / prevCommits) * 100)
-    insights.push({
-      tipo: 'desalinhamento',
-      severidade: 'media',
-      descricao: `Commits caíram ${decrease}% vs mês anterior`,
-      evidencia: `GitHub: ${currCommits} commits (30d) vs ${prevCommits} (mês anterior)`,
-      acaoSugerida: 'Investigar causa no 1:1 — pode indicar bloqueio, férias ou mudança de foco',
-    })
+    const causaRaiz = profileContext?.emFerias ? 'vacation' as const
+      : profileContext?.emLicenca ? 'leave' as const
+      : 'stale' as const
+
+    // Se pessoa esta ausente, rebaixar severidade e ajustar acao
+    if (skipActivityAnalysis) {
+      insights.push({
+        tipo: 'desalinhamento',
+        severidade: 'baixa',
+        descricao: `Commits caíram ${decrease}% vs mês anterior (${profileContext?.emFerias ? 'férias' : 'licença'})`,
+        evidencia: `GitHub: ${currCommits} commits (30d) vs ${prevCommits} (mês anterior)`,
+        acaoSugerida: `Queda esperada — ${profileContext?.ausenciaDescricao ?? 'pessoa ausente'}`,
+        causa_raiz: causaRaiz,
+      })
+    } else {
+      insights.push({
+        tipo: 'desalinhamento',
+        severidade: 'media',
+        descricao: `Commits caíram ${decrease}% vs mês anterior`,
+        evidencia: `GitHub: ${currCommits} commits (30d) vs ${prevCommits} (mês anterior)`,
+        acaoSugerida: 'Investigar causa no 1:1 — pode indicar bloqueio, férias ou mudança de foco',
+        causa_raiz: causaRaiz,
+      })
+    }
   }
 
   const prevReviews = previous.prsRevisados ?? 0
   const currReviews = current.prsRevisados
 
-  if (prevReviews >= 3 && currReviews === 0) {
+  if (!skipActivityAnalysis && prevReviews >= 3 && currReviews === 0) {
     insights.push({
       tipo: 'gap_comunicacao',
       severidade: 'media',
       descricao: 'Nenhuma code review feita nos últimos 30 dias',
       evidencia: `GitHub: ${currReviews} reviews (30d) vs ${prevReviews} (mês anterior)`,
       acaoSugerida: 'Verificar se revisões estão acontecendo por outro canal ou se a participação caiu',
+      causa_raiz: 'stale',
     })
   }
 
