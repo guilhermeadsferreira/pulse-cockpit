@@ -1,4 +1,4 @@
-import { GitHubClient, GitHubConfig, GitHubPR, GitHubCommit, GitHubReview } from './GitHubClient'
+import { GitHubClient, GitHubConfig, GitHubPR, GitHubCommit, GitHubReview, GitHubReviewComment } from './GitHubClient'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('GitHubMetrics')
@@ -12,6 +12,14 @@ export interface GitHubPersonMetrics {
   commits30d: number
   commitsPorSemana: number
   tamanhoMedioPR: { additions: number; deletions: number }
+  // MTRC-01: Code review depth
+  avgCommentsPerReview: number
+  firstReviewTurnaroundDias: number
+  approvalRate: number
+  // MTRC-02: Collaboration
+  collaborationScore: number
+  // MTRC-03: Test coverage
+  testCoverageRatio: number
 }
 
 export interface GitHubMetricsInput {
@@ -28,6 +36,11 @@ const EMPTY_METRICS: GitHubPersonMetrics = {
   commits30d: 0,
   commitsPorSemana: 0,
   tamanhoMedioPR: { additions: 0, deletions: 0 },
+  avgCommentsPerReview: 0,
+  firstReviewTurnaroundDias: 0,
+  approvalRate: 0,
+  collaborationScore: 0,
+  testCoverageRatio: 0,
 }
 
 const THIRTY_DAYS_AGO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -39,10 +52,11 @@ export async function fetchGitHubMetrics(input: GitHubMetricsInput): Promise<Git
     const client = new GitHubClient(config)
     const since = THIRTY_DAYS_AGO
 
-    const [prs, commits, reviews] = await Promise.all([
+    const [prs, commits, reviews, reviewComments] = await Promise.all([
       client.getPRsByUser(username, since),
       client.getCommitsByUser(username, since),
       client.getReviewsByUser(username, since),
+      client.getReviewCommentsByUser(username, since),
     ])
 
     const openPRs = prs.filter(pr => pr.state === 'open')
@@ -62,6 +76,22 @@ export async function fetchGitHubMetrics(input: GitHubMetricsInput): Promise<Git
 
     const tamanhoMedioPR = computeAveragePRSize(mergedPRs.length > 0 ? mergedPRs : prs)
 
+    // MTRC-01: Code review depth
+    const avgCommentsPerReview = reviews.length > 0
+      ? Math.round((reviewComments.length / reviews.length) * 10) / 10
+      : 0
+    const firstReviewTurnaroundDias = tempoMedioReviewDias
+    const approvedReviews = reviews.filter(r => r.state === 'approved')
+    const approvalRate = reviews.length > 0
+      ? Math.round((approvedReviews.length / reviews.length) * 100)
+      : 0
+
+    // MTRC-02: Collaboration score
+    const collaborationScore = computeCollaborationScore(commits, prs, reviews, config.repos)
+
+    // MTRC-03: Test coverage ratio
+    const testCoverageRatio = await computeTestCoverageRatio(client, config.org, mergedPRs)
+
     return {
       prsAbertos,
       prsMerged30d,
@@ -71,6 +101,11 @@ export async function fetchGitHubMetrics(input: GitHubMetricsInput): Promise<Git
       commits30d,
       commitsPorSemana,
       tamanhoMedioPR,
+      avgCommentsPerReview,
+      firstReviewTurnaroundDias,
+      approvalRate,
+      collaborationScore,
+      testCoverageRatio,
     }
   } catch (err) {
     log.error('Erro ao buscar métricas GitHub', { username, error: (err as Error).message })
@@ -127,4 +162,63 @@ function computeAveragePRSize(prs: GitHubPR[]): { additions: number; deletions: 
     additions: Math.round(totalAdditions / prs.length),
     deletions: Math.round(totalDeletions / prs.length),
   }
+}
+
+function computeCollaborationScore(
+  commits: GitHubCommit[],
+  prs: GitHubPR[],
+  reviews: GitHubReview[],
+  configuredRepos: string[],
+): number {
+  // Co-authored commits ratio (weight 30)
+  const coAuthoredCount = commits.filter(c =>
+    /co-authored-by:/i.test(c.message),
+  ).length
+  const coAuthoredRatio = commits.length > 0 ? coAuthoredCount / commits.length : 0
+
+  // Cross-repo activity ratio (weight 40)
+  const activeRepos = new Set<string>()
+  for (const c of commits) activeRepos.add(c.repo)
+  for (const pr of prs) activeRepos.add(pr.repo)
+  const crossRepoRatio = configuredRepos.length > 0
+    ? activeRepos.size / configuredRepos.length
+    : 0
+
+  // Reviews ratio (weight 30)
+  const reviewRatio = Math.min(reviews.length / 5, 1)
+
+  const score = coAuthoredRatio * 30 + crossRepoRatio * 40 + reviewRatio * 30
+  return Math.round(Math.max(0, Math.min(100, score)))
+}
+
+const TEST_FILE_PATTERNS = [
+  /\.test\./,
+  /\.spec\./,
+  /__tests__\//,
+  /\btest\//,
+  /\btests\//,
+]
+
+async function computeTestCoverageRatio(
+  client: GitHubClient,
+  org: string,
+  mergedPRs: GitHubPR[],
+): Promise<number> {
+  if (mergedPRs.length === 0) return 0
+
+  let prsWithTests = 0
+
+  for (const pr of mergedPRs) {
+    try {
+      const filenames = await client.getPRFilenames(org, pr.repo, pr.number)
+      const hasTestFile = filenames.some(f =>
+        TEST_FILE_PATTERNS.some(pattern => pattern.test(f)),
+      )
+      if (hasTestFile) prsWithTests++
+    } catch {
+      // skip PR if file listing fails
+    }
+  }
+
+  return Math.round((prsWithTests / mergedPRs.length) * 100)
 }
