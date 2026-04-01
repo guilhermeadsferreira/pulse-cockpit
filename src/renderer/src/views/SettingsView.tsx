@@ -342,6 +342,21 @@ export function SettingsView() {
             title="Claude Code CLI"
             desc="O app usa seu Claude Code local — sem API key necessária"
           >
+            <Field
+              label="Modelo padrão"
+              hint="Modelo Claude usado em todas as operações. 'haiku' é mais rápido e econômico; 'sonnet' para análises mais complexas"
+            >
+              <select
+                style={{ ...styles.input, cursor: 'pointer' }}
+                value={form.claudeDefaultModel ?? 'haiku'}
+                onChange={(e) => set('claudeDefaultModel', e.target.value)}
+              >
+                <option value="haiku">haiku (padrão — econômico)</option>
+                <option value="sonnet">sonnet (mais capaz)</option>
+                <option value="opus">opus (máxima qualidade)</option>
+              </select>
+            </Field>
+
             <Field label="Binário do claude" hint="Detectado via which claude — armazenado como path absoluto">
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input

@@ -204,10 +204,9 @@ const LEGACY_HYBRID_OPS: IngestionOperation[] = ['ingestionPass1', 'ceremonySina
 
 export function resolveProvider(operation: IngestionOperation, settings: AppSettings): ResolvedProvider {
   const defaultOpenRouterModel = settings.openRouterModel ?? 'google/gemma-3-27b-it'
-  // ingestionDeep1on1 tem modelo legado específico; outras operações não passam --model por padrão
-  const legacyClaudeModel = operation === 'ingestionDeep1on1'
-    ? (settings.ingestionModel ?? 'haiku')
-    : undefined
+  // claudeDefaultModel aplica a todas as operações; ingestionModel é legado para ingestionDeep1on1
+  const defaultClaudeModel = settings.claudeDefaultModel
+    ?? (operation === 'ingestionDeep1on1' ? (settings.ingestionModel ?? 'haiku') : 'haiku')
 
   // 1. Override por operação
   const override = settings.providers?.[operation]
@@ -215,7 +214,7 @@ export function resolveProvider(operation: IngestionOperation, settings: AppSett
     const isOpenRouter = override.provider === 'openrouter'
     return {
       provider: override.provider,
-      claudeModel: isOpenRouter ? legacyClaudeModel : (override.model ?? legacyClaudeModel),
+      claudeModel: isOpenRouter ? defaultClaudeModel : (override.model ?? defaultClaudeModel),
       openRouterModel: isOpenRouter ? (override.model ?? defaultOpenRouterModel) : defaultOpenRouterModel,
       openRouterApiKey: settings.openRouterApiKey,
       fallbackToClaude: override.fallbackToClaude ?? isOpenRouter,
@@ -227,7 +226,7 @@ export function resolveProvider(operation: IngestionOperation, settings: AppSett
     const isOpenRouter = settings.defaultProvider === 'openrouter'
     return {
       provider: settings.defaultProvider,
-      claudeModel: isOpenRouter ? legacyClaudeModel : legacyClaudeModel,
+      claudeModel: isOpenRouter ? defaultClaudeModel : defaultClaudeModel,
       openRouterModel: defaultOpenRouterModel,
       openRouterApiKey: settings.openRouterApiKey,
       fallbackToClaude: isOpenRouter,
@@ -239,7 +238,7 @@ export function resolveProvider(operation: IngestionOperation, settings: AppSett
   if (hybridActive && LEGACY_HYBRID_OPS.includes(operation)) {
     return {
       provider: 'openrouter',
-      claudeModel: legacyClaudeModel,
+      claudeModel: defaultClaudeModel,
       openRouterModel: defaultOpenRouterModel,
       openRouterApiKey: settings.openRouterApiKey,
       fallbackToClaude: true,
@@ -249,7 +248,7 @@ export function resolveProvider(operation: IngestionOperation, settings: AppSett
   // 4. Default: claude-cli
   return {
     provider: 'claude-cli',
-    claudeModel: legacyClaudeModel,
+    claudeModel: defaultClaudeModel,
     openRouterModel: defaultOpenRouterModel,
     openRouterApiKey: settings.openRouterApiKey,
     fallbackToClaude: false,

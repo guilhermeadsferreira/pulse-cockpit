@@ -26,7 +26,9 @@ export interface AppSettings {
   claudeBinPath: string
   managerName?: string
   managerRole?: string
-  /** Modelo Claude para o Deep 1:1. Padrão: 'haiku'. Aceita: 'haiku', 'sonnet', 'opus' */
+  /** Modelo Claude padrão para todas as operações via claude-cli. Padrão: 'haiku'. Aceita: 'haiku', 'sonnet', 'opus' */
+  claudeDefaultModel?: string
+  /** @deprecated Use claudeDefaultModel. Modelo Claude para o Deep 1:1 especificamente. */
   ingestionModel?: string
   /** API key do OpenRouter. Armazenada em plaintext (uso pessoal). */
   openRouterApiKey?: string
