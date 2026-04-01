@@ -1,6 +1,36 @@
 # Done — Pulse Cockpit
 
-> Última atualização: 2026-03-31 (auditoria Wave 0)
+> Última atualização: 2026-04-01
+
+## E6 — Daily Report: Inteligência para o Gestor ✓ (2026-04-01)
+
+> 4 releases (v0.3.1→v0.3.4) transformando daily de dump de dados em ferramenta de decisão.
+
+### Performance (v0.3.1)
+- Removido ExternalDataPass do daily (143-200 issues/pessoa eliminados)
+- Sprint data buscado uma vez (não por pessoa)
+- Paralelização em batches de 3 — tempo de ~6min → ~1min
+
+### Qualidade de conteúdo (v0.3.1-v0.3.2)
+- Sprint Overview como seção separada no topo com tabela por pessoa
+- "O que fez ontem" com detalhes: commit message + repo, review PR# + repo + state
+- "O que avançou" substitui "O que finalizou" — transições reais
+- "Trabalhando agora" lista tasks In Progress/In Review (não stats sprint)
+- Review comments completos (sem truncation)
+- Suporte a `jiraBoardId` por pessoa no config.yaml (múltiplos boards)
+
+### Cycle time e alertas determinísticos (v0.3.3)
+- Cycle time por task ativa via changelog (dias no status atual + warning ⚠️)
+- Categorização: Dev/Review (ativo) vs Queue (Ready for Dev)
+- Alertas: task parada >5d Dev/>3d Review, sem atividade, WIP >3, sprint pace
+
+### Análise com Claude Haiku (v0.3.4)
+- **T6.1** ✅ — Seção "Observações (IA)" com análise cruzada via Haiku
+- Prompt em `src/main/prompts/daily-analysis.prompt.ts`
+- Padrões entre pessoas, correlações Jira×GitHub, sugestões para standup, destaques
+- Graceful degradation: se Haiku falhar, report sai sem a seção
+
+---
 
 ## Wave 0 — Auditoria: tasks já implementadas ✓ (2026-03-31)
 

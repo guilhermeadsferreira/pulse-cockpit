@@ -589,21 +589,8 @@ Se uma ação tem issue ID no Jira e o issue foi fechado, marcar ação como `do
 > Transformar o daily de dump de dados em ferramenta de decisão para o EM.
 > v0.3.1-0.3.2 resolveram performance e qualidade básica. Falta inteligência.
 
-### T6.1 — Análise com Claude Haiku no daily ✨
-**Arquivo:** `DailyReportGenerator.ts`, novo `src/main/prompts/daily-analysis.ts`
-
-Após gerar report determinístico, passar dados para Haiku para análise cruzada:
-- Padrões entre pessoas (review vs commit desbalanceado)
-- Correlações Jira×GitHub (commits sem issue movendo)
-- Sugestões de perguntas para standup
-- Destaques positivos
-
-Usa `runClaudePrompt()` de `ClaudeRunner.ts` com model haiku, timeout 60s, graceful degradation.
-
-**Critério de aceite:**
-- [ ] Seção "Observações (IA)" no final do daily com insights cruzados
-- [ ] Se Haiku falhar, report sai sem a seção (graceful)
-- [ ] Tempo total < 90s incluindo chamada Haiku
+### ~~T6.1~~ — Análise com Claude Haiku no daily ✅ (2026-04-01, v0.3.4)
+Implementado. Seção "Observações (IA)" com `daily-analysis.prompt.ts`, graceful degradation.
 
 ---
 
