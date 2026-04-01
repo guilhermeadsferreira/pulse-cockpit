@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Phase 999.5 Complete
-last_updated: "2026-03-27T15:10:00Z"
+last_updated: "2026-03-31T02:10:00Z"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 
 **Milestone:** V2.1 — Completar camada UI e prompts da V2
 **Active phase:** Phase 999.5 — gemini-preprocessing (complete)
-**Last action:** Implemented Pass 0 with Gemini Flash preprocessing (2026-03-27) — Reduces Claude token consumption by ~60%
+**Last action:** Phase 04 Plan 05 complete — auto agenda generation via Scheduler (2026-03-31)
 
 ## Decisions
 
@@ -40,6 +40,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 999.5]: Google AI API direta (não via OpenRouter) para Gemini Flash — mais controle e preço previsível
 - [Phase 999.5]: Temperatura 0.1 no Gemini para respostas determinísticas na limpeza de transcrições
 - [Phase 999.5]: Fallback silencioso — se pré-processamento falha, usa texto original (nunca perde dados)
+- [Phase 04-05]: Dynamic import no Scheduler para evitar circular dependency com index.ts
+- [Phase 04-05]: generateAgendaForPerson carrega settings internamente para obter openRouter config
 
 ## Phases
 
@@ -66,6 +68,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 |-------|------|----------|-------|-------|
 | 999.4 | 01 | 83s | 2/2 | 2 |
 | 999.5 | 01 | ~35min | 6/6 | 6 |
+| 04 | 05 | 140s | 1/1 | 2 |
 
 ## Next Action
 
