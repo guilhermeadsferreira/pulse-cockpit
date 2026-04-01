@@ -46,7 +46,7 @@ export function RelatoriosView() {
       const baseName = result.split(/[/\\]/).pop() ?? result
       window.dispatchEvent(new CustomEvent(DAILY_REFRESH_EVENT))
       setSuccessHint(
-        `Daily gerado: ${baseName}. Dados externos (Jira/GitHub) foram gravados no workspace e as fichas abertas atualizam automaticamente.`,
+        `Daily gerado: ${baseName}.`,
       )
       await loadReports()
       const today = new Date()

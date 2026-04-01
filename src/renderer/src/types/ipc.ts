@@ -104,6 +104,7 @@ export interface PersonConfig {
   // Identidade externa (V3)
   jiraEmail?:            string
   githubUsername?:       string
+  jiraBoardId?:          number
 }
 
 // ─── External Intelligence ───────────────────────────────────────────────────
