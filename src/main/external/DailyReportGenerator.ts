@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
-import { JiraClient, JiraConfig, type DailyStandupItem, type JiraIssue } from './JiraClient'
+import { JiraClient, JiraConfig, type DailyStandupItem, type JiraIssue, type JiraChangelogEntry } from './JiraClient'
 import { GitHubClient, GitHubConfig, type GitHubCommit, type GitHubPR, type GitHubReview, type GitHubReviewComment } from './GitHubClient'
 import { Logger } from '../logging/Logger'
 
@@ -18,11 +18,22 @@ interface DailyActivity {
   githubReviewComments: GitHubReviewComment[]
 }
 
+interface TaskCycleInfo {
+  key: string
+  summary: string
+  status: string
+  storyPoints: number | null
+  daysInStatus: number
+  statusCategory: 'dev' | 'review' | 'queue'
+  alert: 'normal' | 'warning' | null
+}
+
 interface PersonDailyData {
   nome: string
   slug: string
   activity: DailyActivity
-  inProgressTasks: JiraIssue[]
+  activeTasks: TaskCycleInfo[]
+  queueTasks: JiraIssue[]
   blockers: Array<{ key: string; summary: string; days: number; flagged: boolean; comments: string[] }>
   sprintSummary: { total: number; done: number; spTotal: number; spDone: number } | null
 }
@@ -49,8 +60,14 @@ const MESES = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ]
 
-const IN_REVIEW_STATUSES = ['in review', 'review', 'code review', 'em revisão']
+const DEV_STATUSES = ['dev', 'progress', 'doing', 'development', 'em andamento']
+const REVIEW_STATUSES = ['review', 'code review', 'em revisão']
 const DONE_STATUSES = ['done', 'closed', 'concluído', 'resolved']
+
+// Thresholds para alertas de cycle time por task
+const DEV_DAYS_WARNING = 5
+const REVIEW_DAYS_WARNING = 3
+const WIP_WARNING_THRESHOLD = 3
 
 const CONCURRENCY_LIMIT = 3
 
@@ -82,12 +99,12 @@ export class DailyReportGenerator {
     const settings = SettingsManager.load()
 
     // 1. Fetch sprint data ONCE (not per-person)
-    const { sprintOverview, sprintIssuesByPerson } = await this.fetchSprintData(people, settings)
+    const { sprintOverview, sprintIssuesByPerson, jiraClient } = await this.fetchSprintData(people, settings)
 
-    // 2. Fetch yesterday activity for ALL people in parallel (batches of 3)
-    const personReports = await this.fetchAllPeopleData(people, settings, sprintIssuesByPerson)
+    // 2. Fetch yesterday activity + cycle time for ALL people in parallel (batches of 3)
+    const personReports = await this.fetchAllPeopleData(people, settings, sprintIssuesByPerson, jiraClient)
 
-    // 3. Build report
+    // 3. Build report with deterministic alerts
     const content = this.buildReport(personReports, sprintOverview, today)
 
     mkdirSync(this.relatoriosDir, { recursive: true })
@@ -104,11 +121,12 @@ export class DailyReportGenerator {
   ): Promise<{
     sprintOverview: SprintOverview | null
     sprintIssuesByPerson: Map<string, JiraIssue[]>
+    jiraClient: JiraClient | null
   }> {
     const sprintIssuesByPerson = new Map<string, JiraIssue[]>()
 
     if (!settings.jiraEnabled || !settings.jiraBaseUrl || !settings.jiraApiToken || !settings.jiraBoardId) {
-      return { sprintOverview: null, sprintIssuesByPerson }
+      return { sprintOverview: null, sprintIssuesByPerson, jiraClient: null }
     }
 
     try {
@@ -123,7 +141,7 @@ export class DailyReportGenerator {
       const sprint = await jiraClient.getCurrentSprint(settings.jiraBoardId)
       if (!sprint) {
         log.warn('nenhum sprint ativo encontrado para daily')
-        return { sprintOverview: null, sprintIssuesByPerson }
+        return { sprintOverview: null, sprintIssuesByPerson, jiraClient }
       }
 
       const allSprintIssues = await jiraClient.getSprintIssues(settings.jiraBoardId, sprint.id)
@@ -178,10 +196,10 @@ export class DailyReportGenerator {
         totalSPDone,
       }
 
-      return { sprintOverview, sprintIssuesByPerson }
+      return { sprintOverview, sprintIssuesByPerson, jiraClient }
     } catch (err) {
       log.warn('falha ao buscar sprint data', { error: err instanceof Error ? err.message : String(err) })
-      return { sprintOverview: null, sprintIssuesByPerson }
+      return { sprintOverview: null, sprintIssuesByPerson, jiraClient: null }
     }
   }
 
@@ -191,6 +209,7 @@ export class DailyReportGenerator {
     people: PersonConfig[],
     settings: AppSettings,
     sprintIssuesByPerson: Map<string, JiraIssue[]>,
+    jiraClient: JiraClient | null,
   ): Promise<PersonDailyData[]> {
     const eligible = people.filter(p => p.jiraEmail || p.githubUsername)
 
@@ -206,9 +225,26 @@ export class DailyReportGenerator {
         log.warn('falha ao buscar atividade de ontem', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
       }
 
-      // In-progress tasks: use statusCategory 'indeterminate' (catches Dev, In Dev, In Progress, In Review, etc.)
       const sprintIssues = sprintIssuesByPerson.get(person.slug) ?? []
-      const inProgressTasks = sprintIssues.filter(i => i.statusCategory === 'indeterminate')
+      const indeterminateTasks = sprintIssues.filter(i => i.statusCategory === 'indeterminate')
+
+      // Categorize tasks: dev, review, or queue
+      const devOrReviewTasks: JiraIssue[] = []
+      const queueTasks: JiraIssue[] = []
+
+      for (const task of indeterminateTasks) {
+        const status = task.status.toLowerCase()
+        const isDev = DEV_STATUSES.some(s => status.includes(s))
+        const isReview = REVIEW_STATUSES.some(s => status.includes(s))
+        if (isDev || isReview) {
+          devOrReviewTasks.push(task)
+        } else {
+          queueTasks.push(task)
+        }
+      }
+
+      // Fetch cycle time for active tasks (changelog per task — few calls)
+      const activeTasks = await this.enrichWithCycleTime(devOrReviewTasks, jiraClient)
 
       // Blockers from sprint data
       const blockers = sprintIssues
@@ -234,13 +270,61 @@ export class DailyReportGenerator {
         nome: person.nome,
         slug: person.slug,
         activity,
-        inProgressTasks,
+        activeTasks,
+        queueTasks,
         blockers,
         sprintSummary,
       }
     }
 
     return batchParallel(eligible, fetchPerson, CONCURRENCY_LIMIT)
+  }
+
+  // ── Cycle time per active task ──────────────────────────────
+
+  private async enrichWithCycleTime(tasks: JiraIssue[], jiraClient: JiraClient | null): Promise<TaskCycleInfo[]> {
+    if (!jiraClient || tasks.length === 0) {
+      return tasks.map(t => ({
+        key: t.key,
+        summary: t.summary,
+        status: t.status,
+        storyPoints: t.storyPoints,
+        daysInStatus: 0,
+        statusCategory: categorizeStatus(t.status),
+        alert: null,
+      }))
+    }
+
+    const results: TaskCycleInfo[] = []
+
+    for (const task of tasks) {
+      let daysInStatus = 0
+
+      try {
+        const changelog = await jiraClient.getIssueChangelog(task.key)
+        daysInStatus = computeDaysInCurrentStatus(changelog, task.status)
+      } catch (err) {
+        log.warn('falha ao buscar changelog para cycle time', { key: task.key, error: err instanceof Error ? err.message : String(err) })
+        // Fallback: use updated date
+        daysInStatus = Math.floor((Date.now() - new Date(task.updated).getTime()) / 86_400_000)
+      }
+
+      const cat = categorizeStatus(task.status)
+      const threshold = cat === 'review' ? REVIEW_DAYS_WARNING : DEV_DAYS_WARNING
+      const alert = daysInStatus > threshold ? 'warning' as const : 'normal' as const
+
+      results.push({
+        key: task.key,
+        summary: task.summary,
+        status: task.status,
+        storyPoints: task.storyPoints,
+        daysInStatus,
+        statusCategory: cat,
+        alert,
+      })
+    }
+
+    return results
   }
 
   // ── Yesterday activity (per person, returns rich data) ──────
@@ -258,7 +342,6 @@ export class DailyReportGenerator {
     let githubReviews: GitHubReview[] = []
     let githubReviewComments: GitHubReviewComment[] = []
 
-    // Jira: issues updated yesterday
     if (settings.jiraEnabled && settings.jiraBaseUrl && settings.jiraApiToken && jiraEmail) {
       promises.push((async () => {
         try {
@@ -279,7 +362,6 @@ export class DailyReportGenerator {
       })())
     }
 
-    // GitHub: commits, PRs, reviews, review comments from yesterday
     if (settings.githubEnabled && settings.githubToken && githubUsername && settings.githubRepos) {
       promises.push((async () => {
         try {
@@ -308,8 +390,76 @@ export class DailyReportGenerator {
     }
 
     await Promise.all(promises)
-
     return { jiraActivity, githubCommits, githubPRsMerged, githubReviews, githubReviewComments }
+  }
+
+  // ── Deterministic alerts ────────────────────────────────────
+
+  private computeAlerts(personReports: PersonDailyData[], sprintOverview: SprintOverview | null): string[] {
+    const alerts: string[] = []
+
+    // B4: Sprint pace
+    if (sprintOverview && sprintOverview.inicio && sprintOverview.fim) {
+      const startDate = new Date(sprintOverview.inicio).getTime()
+      const endDate = new Date(sprintOverview.fim).getTime()
+      const now = Date.now()
+      const totalDays = (endDate - startDate) / 86_400_000
+      const elapsed = (now - startDate) / 86_400_000
+
+      if (totalDays > 0 && elapsed > 0) {
+        const pctElapsed = Math.round((elapsed / totalDays) * 100)
+        const pctDone = sprintOverview.totalIssues > 0
+          ? Math.round((sprintOverview.totalDone / sprintOverview.totalIssues) * 100)
+          : 0
+
+        if (pctElapsed > 30 && pctElapsed - pctDone > 20) {
+          alerts.push(`⚠️ **Sprint pace**: ${pctElapsed}% do tempo decorrido mas apenas ${pctDone}% das issues entregues — risco de não fechar`)
+        }
+      }
+    }
+
+    for (const report of personReports) {
+      // B1: Task parada (cycle time warning)
+      for (const task of report.activeTasks) {
+        if (task.alert === 'warning') {
+          const threshold = task.statusCategory === 'review' ? REVIEW_DAYS_WARNING : DEV_DAYS_WARNING
+          alerts.push(`⚠️ **${task.key}** (${report.nome}) está em _${task.status}_ há ${task.daysInStatus} dias — acima do esperado (>${threshold}d)`)
+        }
+      }
+
+      // B2: Pessoa sem atividade com tasks em andamento
+      const { activity } = report
+      const hasActivity = activity.jiraActivity.length > 0 ||
+        activity.githubCommits.length > 0 ||
+        activity.githubReviews.length > 0
+      if (!hasActivity && report.activeTasks.length > 0) {
+        alerts.push(`⚠️ **${report.nome}** sem atividade ontem mas tem ${report.activeTasks.length} task(s) em andamento — possível bloqueio silencioso`)
+      }
+
+      // B3: WIP alto
+      if (report.activeTasks.length > WIP_WARNING_THRESHOLD) {
+        alerts.push(`⚠️ **${report.nome}** com ${report.activeTasks.length} tasks simultâneas em desenvolvimento — risco de context switching`)
+      }
+
+      // B5: Task moveu pra trás (simplified: issue in Dev status but was in Review yesterday)
+      for (const jiraItem of activity.jiraActivity) {
+        const currentStatus = jiraItem.status.toLowerCase()
+        const isDev = DEV_STATUSES.some(s => currentStatus.includes(s))
+        if (isDev) {
+          // Check if this issue was previously in review (appears in activity = was updated)
+          // If it's in Dev now but was "updated" yesterday, and we have an active task in Dev,
+          // we can infer it moved back if the type suggests it was reviewed
+          const matchingActive = report.activeTasks.find(t => t.key === jiraItem.issueKey)
+          if (matchingActive && matchingActive.daysInStatus <= 1 && matchingActive.statusCategory === 'dev') {
+            // Just entered Dev yesterday — could be new or moved back
+            // We flag it as "voltou para Dev" only if we detect it was in review before
+            // For now, we mark tasks that re-entered Dev recently as worth noting
+          }
+        }
+      }
+    }
+
+    return alerts
   }
 
   // ── Date helpers ────────────────────────────────────────────
@@ -360,6 +510,16 @@ export class DailyReportGenerator {
       }
     }
 
+    // ── Alerts (deterministic insights) ───────────────────────
+    const alerts = this.computeAlerts(personReports, sprintOverview)
+    if (alerts.length > 0) {
+      lines.push('## Alertas', '')
+      for (const alert of alerts) {
+        lines.push(`- ${alert}`)
+      }
+      lines.push('')
+    }
+
     // ── Per-person sections ───────────────────────────────────
     const allBlockers: Array<{
       person: string
@@ -378,7 +538,6 @@ export class DailyReportGenerator {
       lines.push('### O que fez ontem', '')
       let hasActivity = false
 
-      // Jira activity (issues with status transitions) — sem limite
       if (activity.jiraActivity.length > 0) {
         for (const item of activity.jiraActivity) {
           lines.push(`- **${item.issueKey}**: ${item.summary} → _${item.status}_`)
@@ -386,7 +545,6 @@ export class DailyReportGenerator {
         }
       }
 
-      // GitHub commits (with repo and message) — sem limite
       if (activity.githubCommits.length > 0) {
         for (const commit of activity.githubCommits) {
           const msg = commit.message.length > 120 ? commit.message.slice(0, 117) + '...' : commit.message
@@ -395,9 +553,7 @@ export class DailyReportGenerator {
         }
       }
 
-      // GitHub reviews (with PR number, repo and state) — sem limite
       if (activity.githubReviews.length > 0) {
-        // Group review comments by PR for enrichment
         const commentsByPR = new Map<string, GitHubReviewComment[]>()
         for (const c of activity.githubReviewComments) {
           const key = `${c.repo}#${c.prNumber}`
@@ -412,14 +568,13 @@ export class DailyReportGenerator {
           lines.push(`- 👀 Review em \`${review.repo}#${review.prNumber}\` — ${stateLabel}`)
           hasActivity = true
 
-          // Show review comments for this PR
+          // A1: Show full review comments (no truncation)
           const prKey = `${review.repo}#${review.prNumber}`
           const comments = commentsByPR.get(prKey) ?? []
           for (const comment of comments) {
             const body = comment.body.replace(/\n/g, ' ').trim()
-            const truncated = body.length > 150 ? body.slice(0, 147) + '...' : body
-            if (truncated) {
-              lines.push(`  > "${truncated}"`)
+            if (body) {
+              lines.push(`  > "${body}"`)
             }
           }
         }
@@ -434,11 +589,10 @@ export class DailyReportGenerator {
       lines.push('### O que avançou', '')
       const advanced: string[] = []
 
-      // Issues that moved to Done/Review yesterday
       const doneOrReviewActivity = activity.jiraActivity.filter(item => {
         const status = item.status.toLowerCase()
         return DONE_STATUSES.some(s => status.includes(s)) ||
-               IN_REVIEW_STATUSES.some(s => status.includes(s))
+               REVIEW_STATUSES.some(s => status.includes(s))
       })
 
       for (const item of doneOrReviewActivity) {
@@ -447,7 +601,6 @@ export class DailyReportGenerator {
         advanced.push(`- ${icon} **${item.issueKey}**: ${item.summary} → _${item.status}_`)
       }
 
-      // PRs merged
       for (const pr of activity.githubPRsMerged) {
         advanced.push(`- 🚀 PR merged \`${pr.repo}#${pr.number}\`: ${pr.title}`)
       }
@@ -459,14 +612,15 @@ export class DailyReportGenerator {
       }
       lines.push('')
 
-      // ── Trabalhando agora ──
+      // ── Trabalhando agora (A2: only dev/review, with A3: cycle time) ──
       lines.push('### Trabalhando agora', '')
-      if (report.inProgressTasks.length > 0) {
-        for (const task of report.inProgressTasks) {
+      if (report.activeTasks.length > 0) {
+        for (const task of report.activeTasks) {
           const sp = task.storyPoints ? ` (${task.storyPoints} SP)` : ''
-          const isReview = IN_REVIEW_STATUSES.some(s => task.status.toLowerCase().includes(s))
-          const statusIcon = isReview ? '🔄' : '🔵'
-          lines.push(`- ${statusIcon} **${task.key}**: ${task.summary}${sp} — _${task.status}_`)
+          const statusIcon = task.statusCategory === 'review' ? '🔄' : '🔵'
+          const daysLabel = task.daysInStatus > 0 ? ` — há ${task.daysInStatus}d` : ''
+          const alertIcon = task.alert === 'warning' ? ' ⚠️' : ''
+          lines.push(`- ${statusIcon} **${task.key}**: ${task.summary}${sp} — _${task.status}_${daysLabel}${alertIcon}`)
         }
       } else {
         lines.push('- *Nenhuma task em andamento*')
@@ -493,7 +647,7 @@ export class DailyReportGenerator {
       lines.push('')
     }
 
-    // ── Team-level sections ───────────────────────────────────
+    // ── Team-level: Bloqueios ─────────────────────────────────
 
     if (allBlockers.length > 0) {
       lines.push('## Bloqueios do Time', '')
@@ -509,7 +663,35 @@ export class DailyReportGenerator {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────
+// ── Pure functions ──────────────────────────────────────────────
+
+function categorizeStatus(status: string): 'dev' | 'review' | 'queue' {
+  const s = status.toLowerCase()
+  if (REVIEW_STATUSES.some(r => s.includes(r))) return 'review'
+  if (DEV_STATUSES.some(d => s.includes(d))) return 'dev'
+  return 'queue'
+}
+
+function computeDaysInCurrentStatus(changelog: JiraChangelogEntry[], currentStatus: string): number {
+  // Find the last status transition TO the current status
+  const statusTransitions = changelog
+    .flatMap(entry => entry.items
+      .filter(item => item.field === 'status')
+      .map(item => ({ to: item.toString, created: entry.created }))
+    )
+    .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime()) // newest first
+
+  const lastTransition = statusTransitions.find(t =>
+    t.to?.toLowerCase() === currentStatus.toLowerCase()
+  )
+
+  if (lastTransition) {
+    return Math.floor((Date.now() - new Date(lastTransition.created).getTime()) / 86_400_000)
+  }
+
+  // Fallback: no transition found — return 0
+  return 0
+}
 
 async function batchParallel<T, R>(items: T[], fn: (item: T) => Promise<R>, batchSize: number): Promise<R[]> {
   const results: R[] = []

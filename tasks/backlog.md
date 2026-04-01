@@ -584,6 +584,79 @@ Se uma ação tem issue ID no Jira e o issue foi fechado, marcar ação como `do
 
 ---
 
+## E6 — Daily Report: Inteligência para o Gestor (2026-04-01)
+
+> Transformar o daily de dump de dados em ferramenta de decisão para o EM.
+> v0.3.1-0.3.2 resolveram performance e qualidade básica. Falta inteligência.
+
+### T6.1 — Análise com Claude Haiku no daily ✨
+**Arquivo:** `DailyReportGenerator.ts`, novo `src/main/prompts/daily-analysis.ts`
+
+Após gerar report determinístico, passar dados para Haiku para análise cruzada:
+- Padrões entre pessoas (review vs commit desbalanceado)
+- Correlações Jira×GitHub (commits sem issue movendo)
+- Sugestões de perguntas para standup
+- Destaques positivos
+
+Usa `runClaudePrompt()` de `ClaudeRunner.ts` com model haiku, timeout 60s, graceful degradation.
+
+**Critério de aceite:**
+- [ ] Seção "Observações (IA)" no final do daily com insights cruzados
+- [ ] Se Haiku falhar, report sai sem a seção (graceful)
+- [ ] Tempo total < 90s incluindo chamada Haiku
+
+---
+
+### T6.2 — PR aberto sem review
+**Arquivo:** `DailyReportGenerator.ts`
+
+Fetch PRs abertos (não só merged) via `GitHubClient.getPRsByUser` com state='open'. Alertar se PR aberto há >2 dias sem reviewer.
+
+**Critério de aceite:**
+- [ ] Alerta: "⚠️ PR banking-api#142 aberto há 3 dias sem review"
+- [ ] Não conta draft PRs
+
+---
+
+### T6.3 — Cycle time por pessoa (média) no Sprint Report
+**Arquivo:** `SprintReportGenerator.ts`
+
+Usar dados de changelog (já calculados em `computeCycleTimeByStage`) para mostrar:
+- Cycle time médio por pessoa (Dev→Review, Review→Done)
+- Comparação com média do time
+- Trend vs sprint anterior
+
+**Depende de:** dados históricos em `external_data.yaml`
+
+**Critério de aceite:**
+- [ ] Sprint Report tem tabela de cycle time por pessoa
+- [ ] Indicadores ↑↓→ vs sprint anterior
+
+---
+
+### T6.4 — Lead time do time no Weekly Report
+**Arquivo:** `WeeklyReportGenerator.ts`
+
+Lead time = criação da issue até Done. Diferente de cycle time (início do trabalho até Done).
+- Média da semana
+- Trend vs semana anterior
+
+**Critério de aceite:**
+- [ ] Weekly mostra lead time médio com trend
+
+---
+
+### T6.5 — Velocity trend no Monthly Report
+**Arquivo:** `MonthlyReportGenerator.ts`
+
+SP entregues por sprint nos últimos 3 meses. Gráfico ASCII ou tabela comparativa.
+
+**Critério de aceite:**
+- [ ] Monthly mostra velocity por sprint dos últimos 3 meses
+- [ ] Média e tendência (crescendo, estável, caindo)
+
+---
+
 ## R6 — Revisão Extensiva: Prompt Refinements Detalhados (2026-03-31)
 
 > 30 ajustes granulares nos prompts identificados na revisão. Agrupados por prompt.
