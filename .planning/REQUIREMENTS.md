@@ -113,6 +113,14 @@ Requirements para este milestone. Cada um mapeia para phases do roadmap.
 - [x] **STRD-04**: SustentacaoView exibe dois novos cards de SLA Compliance (7d e 30d) com percentual ou "—" quando null
 - [x] **STRD-05**: Cards existentes (Abertos, Fechados 30d, Breach) exibem delta indicator (seta + numero absoluto) vs snapshot de 7 dias atras; mini charts SVG de breach count e compliance % exibidos quando history.length >= 2
 
+### Sustentacao Reports & Cruzamento com Produtividade (Phase 999.12)
+
+- [ ] **SRCP-01**: fetchSustentacaoForReport() exportada no SupportBoardClient — busca snapshot sem IPC, retorna null quando nao configurado, graceful degradation via try/catch
+- [ ] **SRCP-02**: Daily report inclui secao "Sustentacao" com carga total, breach count, SLA compliance e tabela de carga por pessoa (porAssignee cruzado com nomes do time)
+- [ ] **SRCP-03**: Prompt daily-analysis recebe campo sustentacao? e instrucao de cruzamento produtividade×suporte — "fulano carrega X tickets E velocity baixa"
+- [ ] **SRCP-04**: MetricsWriter.writeSustentacaoWeekly() persiste SustentacaoWeeklyEntry (semana, ticketsAbertos, breachCount, complianceRate7d) em secao SUSTENTACAO_SEMANAL com retencao de 12 entradas
+- [ ] **SRCP-05**: Weekly report inclui secao "Sustentacao da Semana" com cruzamento inline (pessoa com >= 3 tickets E zero SP → nota de impacto); chama writeSustentacaoWeekly() para cada pessoa com tickets no porAssignee
+
 ## v2 Requirements
 
 Nao ha v2 neste milestone — todas as tasks identificadas estao no escopo v1.
@@ -194,6 +202,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STRD-04 | Phase 999.11 | Planned |
 | STRD-05 | Phase 999.11 | Planned |
 
+| SRCP-01 | Phase 999.12 | Planned |
+| SRCP-02 | Phase 999.12 | Planned |
+| SRCP-03 | Phase 999.12 | Planned |
+| SRCP-04 | Phase 999.12 | Planned |
+| SRCP-05 | Phase 999.12 | Planned |
+
 **Coverage:**
 - v1 requirements: 35 total
 - Mapped to phases: 35
@@ -202,7 +216,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 - Backlog requirements (999.5): 5 total
 - Backlog requirements (999.9): 7 total
 - Backlog requirements (999.11): 5 total
+- Backlog requirements (999.12): 5 total
 
 ---
 *Requirements defined: 2026-03-31*
-*Last updated: 2026-04-02 — added STRD-01 to STRD-05 for Phase 999.11*
+*Last updated: 2026-04-02 — added SRCP-01 to SRCP-05 for Phase 999.12*

@@ -188,15 +188,16 @@ Plans:
 - [x] 999.11-02-PLAN.md — history.json + IPC com history[] (STRD-03)
 - [x] 999.11-03-PLAN.md — SustentacaoView: compliance cards + deltas + mini charts (STRD-04, STRD-05)
 
-### Phase 999.12: Sustentação — Reports + cruzamento com produtividade (BACKLOG)
+### Phase 999.12: Sustentação — Reports + cruzamento com produtividade
 
 **Goal:** Sustentação entra nos reports (Daily/Weekly) com resumo de carga, breaches e alertas. Cruzar dados de sustentação com produtividade do time: "fulano teve velocity baixa E estava carregando 8 tickets de suporte". Análise de IA automatizada nos reports em vez de manual.
-**Requirements:** TBD
-**Plans:** 0 plans
+**Requirements:** SRCP-01, SRCP-02, SRCP-03, SRCP-04, SRCP-05
+**Plans:** 2 plans
 **Note:** Gaps cobertos: sustentação é silo + IA manual e descartável (parcial). Fase B — depende de 999.11 (trending). Depende também de 999.7 (MetricsWriter) para persistência.
 
 Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+- [ ] 999.12-01-PLAN.md — fetchSustentacaoForReport() + seção Sustentação no Daily + cruzamento no prompt IA (SRCP-01, SRCP-02, SRCP-03)
+- [ ] 999.12-02-PLAN.md — MetricsWriter.writeSustentacaoWeekly() + seção Sustentação no Weekly (SRCP-04, SRCP-05)
 
 ### Phase 999.13: Sustentação — Intel operacional por pessoa (BACKLOG)
 
