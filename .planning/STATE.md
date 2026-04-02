@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.5
-last_updated: "2026-04-02T01:18:13.893Z"
+last_updated: "2026-04-02T01:20:39.942Z"
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 23
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State — Pulse Cockpit V2.1
@@ -66,6 +66,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 999.5-01]: Campos opcionais em AppSettings sem alterar DEFAULTS — settings existentes permanecem validos
 - [Phase 999.5-01]: SupportTicket e SupportBoardSnapshot inseridos entre ExternalDataSnapshot e ExternalHistoricoEntry para agrupar tipos external intelligence
 - [Phase 999.5-01]: 'sustentacao' adicionado apos 'audit' no ViewName — mantem ordem existente intacta
+- [Phase 999.5-02]: searchIssuesByAssignee chamado com assignee='' e JQL customizado — segundo parâmetro sobrescreve query default quando presente
+- [Phase 999.5-02]: Contagens de tipos/labels/assignee baseadas apenas em tickets abertos (statusCategory !== 'done')
 
 ## Phases
 
@@ -104,6 +106,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | 999.7 | 01 | 2min | 2/2 | 3 |
 | 999.7 | 02 | 2min | 2/2 | 2 |
 | Phase 999.5 P01 | 67s | 2 tasks | 3 files |
+| Phase 999.5 P02 | 42 | 1 tasks | 1 files |
 
 ## Next Action
 
