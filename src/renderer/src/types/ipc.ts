@@ -181,6 +181,28 @@ export interface SupportBoardSnapshot {
   ticketsEmBreach: SupportTicket[]
   /** Agrupamento por assignee: slug → contagem de tickets abertos */
   porAssignee: Record<string, number>
+  /** null = sem tickets resolvidos nos últimos 7 dias */
+  complianceRate7d: number | null
+  /** null = sem tickets resolvidos nos últimos 30 dias */
+  complianceRate30d: number | null
+  /** Últimos 30 snapshots diários para deltas e mini charts */
+  history: SustentacaoHistoryEntry[]
+}
+
+/** Entrada de histórico diário de sustentação (sem ticketsEmBreach completo para manter history.json leve) */
+export interface SustentacaoHistoryEntry {
+  /** Data no formato YYYY-MM-DD (chave de deduplica diária) */
+  date: string
+  /** Timestamp Unix ms do fetch */
+  fetchedAt: number
+  ticketsAbertos: number
+  ticketsFechadosUltimos30d: number
+  /** Apenas o número, não o array completo de SupportTicket */
+  breachCount: number
+  /** null = sem tickets resolvidos na janela (não exibir percentual, exibir "—") */
+  complianceRate7d: number | null
+  /** null = sem tickets resolvidos na janela */
+  complianceRate30d: number | null
 }
 
 export interface ExternalHistoricoEntry {

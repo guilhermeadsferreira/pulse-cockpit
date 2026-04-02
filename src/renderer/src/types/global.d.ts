@@ -1,4 +1,4 @@
-import type { AppSettings, PersonConfig, ArtifactMeta, ArtifactFeedItem, PerfilData, QueueItem, CycleReportParams, DetectedPerson, PautaMeta, Action, ActionStatus, DocItem, LogLevel, LogEntry, ExternalHistoricoEntry } from './ipc'
+import type { AppSettings, PersonConfig, ArtifactMeta, ArtifactFeedItem, PerfilData, QueueItem, CycleReportParams, DetectedPerson, PautaMeta, Action, ActionStatus, DocItem, LogLevel, LogEntry, ExternalHistoricoEntry, SupportBoardSnapshot } from './ipc'
 
 declare global {
   interface Window {
@@ -117,12 +117,27 @@ declare global {
         listReports:       () => Promise<Array<{ name: string; date: string; size: number }>>
         getReport:         (path: string) => Promise<string>
         regenerateReport:  (name: string) => Promise<string>
+        onProgress:        (cb: (data: ReportProgress) => void) => void
+        removeProgressListener: () => void
       }
 
       github: {
         syncTeamRepos: () => Promise<{ success: boolean; repos?: string[]; error?: string }>
       }
+
+      sustentacao: {
+        getData:     () => Promise<SupportBoardSnapshot | null>
+        refresh:     () => Promise<SupportBoardSnapshot | null>
+        runAnalysis: () => Promise<{ analysis?: string; error?: string } | null>
+      }
     }
+  }
+
+  interface ReportProgress {
+    type: string
+    step: string
+    message: string
+    percent: number
   }
 
   interface UpdateStatus {
