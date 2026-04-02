@@ -1077,9 +1077,73 @@ export class DailyReportGenerator {
         lines_sust.push('')
       }
 
+      // Vazão semanal (últimas 4 semanas)
+      const inOutRecent = (sustentacao.inOutSemanal ?? []).slice(-4)
+      if (inOutRecent.length > 0) {
+        lines_sust.push('### Vazão Semanal', '')
+        lines_sust.push('| Semana | Entrada | Saída | Saldo |')
+        lines_sust.push('|--------|---------|-------|-------|')
+        const mesesPt = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+        for (const entry of inOutRecent) {
+          const mon = new Date(entry.semana + 'T00:00:00')
+          const sun = new Date(mon)
+          sun.setDate(mon.getDate() + 6)
+          const label = `${mon.getDate()}/${mesesPt[mon.getMonth()]}-${sun.getDate()}/${mesesPt[sun.getMonth()]}`
+          const saldo = entry.in - entry.out
+          const saldoStr = saldo > 0 ? `+${saldo}` : saldo === 0 ? '0' : `${saldo}`
+          lines_sust.push(`| ${label} | ${entry.in} | ${entry.out} | ${saldoStr} |`)
+        }
+        lines_sust.push('')
+      }
+
+      // Alertas críticos de sustentação (com contexto rico quando disponível)
+      const alertasCriticos = (sustentacao.alertas ?? []).filter(a => a.severidade === 'critico')
+      if (alertasCriticos.length > 0) {
+        lines_sust.push('### Alertas de Sustentação', '')
+        for (const alerta of alertasCriticos) {
+          if (alerta.summary) {
+            const assigneeStr = alerta.assignee ? `, ${alerta.assignee}` : ''
+            const statusStr = alerta.status ? `, ${alerta.status}` : ''
+            lines_sust.push(`- **${alerta.ticketKey}** — ${alerta.summary} (${alerta.mensagem.match(/(\d+)d aberto/)?.[1] ?? '?'}d${statusStr}${assigneeStr})`)
+            if (alerta.lastComment) {
+              lines_sust.push(`  > "${alerta.lastComment.body.slice(0, 120)}${alerta.lastComment.body.length > 120 ? '…' : ''}" — ${alerta.lastComment.author}`)
+            }
+          } else {
+            lines_sust.push(`- ${alerta.mensagem}`)
+          }
+        }
+        lines_sust.push('')
+      }
+
       lines.push(...lines_sust)
 
       // Texto resumido para o analysisInput da IA
+      const alertasTextParts: string[] = []
+      if (alertasCriticos.length > 0) {
+        alertasTextParts.push(`Alertas criticos sustentação (${alertasCriticos.length}):`)
+        for (const a of alertasCriticos.slice(0, 5)) {
+          if (a.summary) {
+            const commentSnippet = a.lastComment ? ` | ultimo comentario: "${a.lastComment.body.slice(0, 100)}"` : ''
+            alertasTextParts.push(`  - ${a.ticketKey}: ${a.summary} (${a.status ?? '?'}, ${a.assignee ?? 'sem assignee'})${commentSnippet}`)
+          } else {
+            alertasTextParts.push(`  - ${a.mensagem}`)
+          }
+        }
+      }
+
+      // Tendência de vazão para a IA
+      let vazaoTextParts: string[] = []
+      if (inOutRecent.length >= 2) {
+        const vazaoDesc = inOutRecent.map(e => `+${e.in}/-${e.out}`).join(', ')
+        const totalIn = inOutRecent.reduce((s, e) => s + e.in, 0)
+        const totalOut = inOutRecent.reduce((s, e) => s + e.out, 0)
+        const tendencia = totalIn > totalOut * 1.15 ? 'acumulando' : totalOut > totalIn * 1.15 ? 'reduzindo' : 'estável'
+        vazaoTextParts = [
+          `Vazão ${inOutRecent.length} semanas: ${vazaoDesc}`,
+          `Tendência: ${tendencia} (entrada total ${totalIn}, saída total ${totalOut})`,
+        ]
+      }
+
       sustentacaoText = [
         `Board: ${sustentacao.ticketsAbertos} abertos, ${sustentacao.ticketsEmBreach.length} em breach`,
         sustentacao.complianceRate7d !== null ? `SLA compliance 7d: ${sustentacao.complianceRate7d}%` : '',
@@ -1089,6 +1153,8 @@ export class DailyReportGenerator {
               return `${nome} (${n} tickets)`
             }).join(', ')
           : '',
+        ...vazaoTextParts,
+        ...alertasTextParts,
       ].filter(Boolean).join('\n')
     }
 

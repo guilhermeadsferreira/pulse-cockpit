@@ -259,7 +259,8 @@ export function calcularAlertas(
   snapshot: Omit<SupportBoardSnapshot, 'alertas'>,
   history: SustentacaoHistoryEntry[],
   issues: Array<{ created: string; type: string; labels: string[]; statusCategory: string }>,
-  slaThresholds: Record<string, number> = {}
+  slaThresholds: Record<string, number> = {},
+  jiraBaseUrl?: string
 ): SustentacaoAlerta[] {
   const alertas: SustentacaoAlerta[] = []
 
@@ -285,10 +286,23 @@ export function calcularAlertas(
   for (const ticket of snapshot.ticketsEmBreach) {
     const threshold = slaThresholds[ticket.type] ?? DEFAULT_SLA_DIAS
     if (ticket.ageDias > ALRT_SLA_MULTIPLIER * threshold) {
+      const lastComment = ticket.recentComments.length > 0
+        ? {
+            author: ticket.recentComments[0].author,
+            body: ticket.recentComments[0].body.slice(0, 150),
+            created: ticket.recentComments[0].created,
+          }
+        : null
       alertas.push({
         tipo: 'ticket_envelhecendo',
         mensagem: `${ticket.key}: ${ticket.ageDias}d aberto (limite ${threshold}d, threshold critico ${ALRT_SLA_MULTIPLIER * threshold}d)`,
         severidade: 'critico',
+        ticketKey: ticket.key,
+        summary: ticket.summary,
+        status: ticket.status,
+        assignee: ticket.assignee,
+        lastComment,
+        jiraUrl: jiraBaseUrl ? `${jiraBaseUrl}/browse/${ticket.key}` : undefined,
       })
     }
   }
@@ -321,20 +335,24 @@ export function calcularAlertas(
   const abertosRecentes = issues.filter(
     (i) => i.statusCategory !== 'done' && new Date(i.created).getTime() >= cutoffSpike
   )
-  const spikeCounts: Record<string, number> = {}
+  const spikeCounts: Record<string, { count: number; keys: string[] }> = {}
   for (const issue of abertosRecentes) {
+    const issueKey = 'key' in issue ? (issue as { key: string }).key : undefined
     for (const label of issue.labels.length > 0 ? issue.labels : ['_sem_label']) {
-      const key = `${issue.type}::${label}`
-      spikeCounts[key] = (spikeCounts[key] ?? 0) + 1
+      const k = `${issue.type}::${label}`
+      if (!spikeCounts[k]) spikeCounts[k] = { count: 0, keys: [] }
+      spikeCounts[k].count++
+      if (issueKey && spikeCounts[k].keys.length < 5) spikeCounts[k].keys.push(issueKey)
     }
   }
-  for (const [key, count] of Object.entries(spikeCounts)) {
+  for (const [key, { count, keys }] of Object.entries(spikeCounts)) {
     if (count >= ALRT_SPIKE_COUNT) {
       const [tipo, label] = key.split('::')
       const labelDesc = label === '_sem_label' ? '' : ` / ${label}`
+      const keysDesc = keys.length > 0 ? ` (${keys.join(', ')})` : ''
       alertas.push({
         tipo: 'spike_incidente',
-        mensagem: `${count} tickets "${tipo}${labelDesc}" criados nas ultimas 2h — possivel incidente`,
+        mensagem: `${count} tickets "${tipo}${labelDesc}" criados nas ultimas 2h — possivel incidente${keysDesc}`,
         severidade: 'critico',
       })
     }

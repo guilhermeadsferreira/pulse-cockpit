@@ -82,6 +82,13 @@ function MiniLineChart({
  * Gráfico de barras in/out semanal com SVG inline.
  * Barras azuis (accent) = in, barras mais claras (text-muted) = out.
  */
+const MESES_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+function formatWeekLabel(semana: string): string {
+  const d = new Date(semana + 'T00:00:00')
+  return `${d.getDate()}/${MESES_PT[d.getMonth()]}`
+}
+
 function InOutBarChart({
   entries,
   width = 420,
@@ -93,43 +100,68 @@ function InOutBarChart({
 }) {
   if (entries.length === 0) return null
   const maxVal = Math.max(...entries.flatMap((e) => [e.in, e.out]), 1)
+  const labelHeight = 14
+  const chartHeight = height
+  const totalHeight = chartHeight + labelHeight
   const barGroupWidth = width / entries.length
   const barWidth = Math.max(4, barGroupWidth * 0.35)
   const gap = 2
+  const showAllLabels = entries.length <= 5
 
   return (
-    <svg width={width} height={height} style={{ overflow: 'visible', display: 'block' }}>
+    <svg width={width} height={totalHeight} style={{ overflow: 'visible', display: 'block' }}>
       {entries.map((entry, i) => {
         const cx = (i / entries.length) * width + barGroupWidth / 2
-        const inH = Math.max(2, (entry.in / maxVal) * (height - 4))
-        const outH = Math.max(2, (entry.out / maxVal) * (height - 4))
+        const inH = Math.max(2, (entry.in / maxVal) * (chartHeight - 4))
+        const outH = Math.max(2, (entry.out / maxVal) * (chartHeight - 4))
+        const showLabel = showAllLabels || i % 2 === 0 || i === entries.length - 1
         return (
           <g key={entry.semana}>
-            {/* Barra "in" (tickets criados) — à esquerda */}
             <rect
               x={cx - barWidth - gap / 2}
-              y={height - inH}
+              y={chartHeight - inH}
               width={barWidth}
               height={inH}
               fill="var(--accent)"
               opacity={0.85}
               rx={1}
             />
-            {/* Barra "out" (tickets resolvidos) — à direita */}
             <rect
               x={cx + gap / 2}
-              y={height - outH}
+              y={chartHeight - outH}
               width={barWidth}
               height={outH}
               fill="var(--text-muted)"
               opacity={0.6}
               rx={1}
             />
+            {showLabel && (
+              <text
+                x={cx}
+                y={chartHeight + labelHeight}
+                textAnchor="middle"
+                fontSize={9}
+                fill="var(--text-muted)"
+                fontFamily="var(--font)"
+              >
+                {formatWeekLabel(entry.semana)}
+              </text>
+            )}
           </g>
         )
       })}
     </svg>
   )
+}
+
+/** Formata data relativa curta: "3d atrás", "2h atrás" */
+function formatRelativeDate(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime()
+  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDias > 0) return `${diffDias}d atrás`
+  const diffHoras = Math.floor(diffMs / (1000 * 60 * 60))
+  if (diffHoras > 0) return `${diffHoras}h atrás`
+  return 'agora'
 }
 
 function AlertasBanner({ alertas }: { alertas: SustentacaoAlerta[] }) {
@@ -160,18 +192,57 @@ function AlertasBanner({ alertas }: { alertas: SustentacaoAlerta[] }) {
         <AlertTriangle size={13} />
         {sorted.length === 1 ? '1 alerta ativo' : `${sorted.length} alertas ativos`}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {sorted.map((alerta, i) => (
           <div key={i} style={{
-            display: 'flex', alignItems: 'flex-start', gap: 6,
+            display: 'flex', flexDirection: 'column', gap: 2,
             fontSize: 12.5, color: 'var(--text-secondary)',
             lineHeight: 1.45,
           }}>
-            {alerta.severidade === 'critico'
-              ? <AlertCircle size={12} style={{ color: 'var(--red)', flexShrink: 0, marginTop: 1 }} />
-              : <AlertTriangle size={12} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
-            }
-            {alerta.mensagem}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+              {alerta.severidade === 'critico'
+                ? <AlertCircle size={12} style={{ color: 'var(--red)', flexShrink: 0, marginTop: 2 }} />
+                : <AlertTriangle size={12} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }} />
+              }
+              <div style={{ flex: 1 }}>
+                {alerta.summary ? (
+                  <>
+                    <span style={{ fontWeight: 600 }}>
+                      {alerta.jiraUrl ? (
+                        <a
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); window.open(alerta.jiraUrl, '_blank') }}
+                          style={{ color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                        >
+                          {alerta.ticketKey}
+                        </a>
+                      ) : (
+                        alerta.ticketKey
+                      )}
+                    </span>
+                    {' — '}
+                    {alerta.summary}
+                    <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>
+                      ({alerta.mensagem.match(/(\d+)d aberto/)?.[1] ?? '?'}d
+                      {alerta.status ? `, ${alerta.status}` : ''}
+                      {alerta.assignee ? `, ${alerta.assignee}` : ''})
+                    </span>
+                    {alerta.lastComment && (
+                      <div style={{
+                        fontSize: 11.5, color: 'var(--text-muted)',
+                        marginTop: 2, paddingLeft: 2,
+                        fontStyle: 'italic',
+                      }}>
+                        "{alerta.lastComment.body.slice(0, 120)}{alerta.lastComment.body.length > 120 ? '…' : ''}"
+                        {' — '}{alerta.lastComment.author}, {formatRelativeDate(alerta.lastComment.created)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  alerta.mensagem
+                )}
+              </div>
+            </div>
           </div>
         ))}
       </div>
