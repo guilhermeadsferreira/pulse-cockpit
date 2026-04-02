@@ -191,6 +191,8 @@ export interface SupportBoardSnapshot {
   inOutSemanal: InOutSemanalEntry[]
   /** Tipos recorrentes: tipo+label com >2 ocorrências nos últimos 30 dias */
   recorrentesDetectados: RecorrenteDetectado[]
+  /** Alertas proativos calculados a cada refresh. Array vazio = sem alertas. */
+  alertas: SustentacaoAlerta[]
 }
 
 /** Entrada de histórico diário de sustentação (sem ticketsEmBreach completo para manter history.json leve) */
@@ -207,6 +209,16 @@ export interface SustentacaoHistoryEntry {
   complianceRate7d: number | null
   /** null = sem tickets resolvidos na janela */
   complianceRate30d: number | null
+}
+
+/** Alerta proativo calculado a cada refresh de dados de sustentacao */
+export interface SustentacaoAlerta {
+  /** Identificador da condicao que gerou o alerta */
+  tipo: 'breach_crescente' | 'ticket_envelhecendo' | 'fila_crescendo' | 'spike_incidente'
+  /** Mensagem legivel para exibir no banner */
+  mensagem: string
+  /** Severidade visual */
+  severidade: 'critico' | 'atencao'
 }
 
 /** Entrada de vazão semanal: tickets abertos (in) vs resolvidos (out) na semana. */
