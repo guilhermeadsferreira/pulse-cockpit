@@ -45,15 +45,23 @@ export interface MomentoAtualEntry {
   alertasAtivos: number
 }
 
+export interface SustentacaoWeeklyEntry {
+  semana: string        // formato "YYYY-MM-DD a YYYY-MM-DD"
+  ticketsAbertos: number
+  breachCount: number
+  complianceRate7d: number | null
+}
+
 // ── Section delimiters ─────────────────────────────────────────
 
 const SECTIONS = {
-  MOMENTO_ATUAL:      { open: '<!-- METRICAS:MOMENTO_ATUAL -->',      close: '<!-- FIM:MOMENTO_ATUAL -->' },
-  ALERTAS:            { open: '<!-- METRICAS:ALERTAS -->',            close: '<!-- FIM:ALERTAS -->' },
-  SEMANAS:            { open: '<!-- METRICAS:SEMANAS -->',            close: '<!-- FIM:SEMANAS -->' },
-  SPRINTS:            { open: '<!-- METRICAS:SPRINTS -->',            close: '<!-- FIM:SPRINTS -->' },
-  MESES:              { open: '<!-- METRICAS:MESES -->',              close: '<!-- FIM:MESES -->' },
+  MOMENTO_ATUAL:       { open: '<!-- METRICAS:MOMENTO_ATUAL -->',       close: '<!-- FIM:MOMENTO_ATUAL -->' },
+  ALERTAS:             { open: '<!-- METRICAS:ALERTAS -->',             close: '<!-- FIM:ALERTAS -->' },
+  SEMANAS:             { open: '<!-- METRICAS:SEMANAS -->',             close: '<!-- FIM:SEMANAS -->' },
+  SPRINTS:             { open: '<!-- METRICAS:SPRINTS -->',             close: '<!-- FIM:SPRINTS -->' },
+  MESES:               { open: '<!-- METRICAS:MESES -->',               close: '<!-- FIM:MESES -->' },
   SUSTENTACAO_ANALISE: { open: '<!-- METRICAS:SUSTENTACAO_ANALISE -->', close: '<!-- FIM:SUSTENTACAO_ANALISE -->' },
+  SUSTENTACAO_SEMANAL: { open: '<!-- METRICAS:SUSTENTACAO_SEMANAL -->', close: '<!-- FIM:SUSTENTACAO_SEMANAL -->' },
 } as const
 
 type SectionKey = keyof typeof SECTIONS
@@ -64,6 +72,7 @@ const RETENTION: Partial<Record<SectionKey, number>> = {
   SEMANAS: 12,
   SPRINTS: 6,
   MESES: 6,
+  SUSTENTACAO_SEMANAL: 12,
 }
 
 // ── MetricsWriter ──────────────────────────────────────────────
@@ -207,6 +216,67 @@ export class MetricsWriter {
     const updated = this.replaceSection(content, 'SUSTENTACAO_ANALISE', rendered)
     writeFileSync(filePath, updated, 'utf-8')
     log.info('MetricsWriter: sustentação análise salva', { slug })
+  }
+
+  writeSustentacaoWeekly(slug: string, entry: SustentacaoWeeklyEntry): void {
+    try {
+      const filePath = this.ensureFile(slug)
+      let content = readFileSync(filePath, 'utf-8')
+
+      const complianceStr = entry.complianceRate7d !== null ? `${entry.complianceRate7d}%` : '—'
+      const entryLine = `| ${entry.semana} | ${entry.ticketsAbertos} | ${entry.breachCount} | ${complianceStr} |`
+
+      const { open, close } = SECTIONS.SUSTENTACAO_SEMANAL
+      const openIdx = content.indexOf(open)
+      const closeIdx = content.indexOf(close)
+
+      if (openIdx === -1 || closeIdx === -1) {
+        // Section does not exist — build full block with header and first row
+        const block = [
+          '### Sustentação Semanal',
+          '',
+          '| Semana | Abertos | Breach | SLA 7d |',
+          '|--------|---------|--------|--------|',
+          entryLine,
+          '',
+        ].join('\n')
+        content = content.trimEnd() + '\n\n' + open + '\n' + block + '\n' + close + '\n'
+      } else {
+        // Section exists — extract rows, prepend new entry, apply retention, rewrite
+        const sectionInner = content.slice(openIdx + open.length, closeIdx)
+        const TABLE_SEP = '|--------|---------|--------|--------|'
+        const sepIdx = sectionInner.indexOf(TABLE_SEP)
+
+        let existingRows: string[] = []
+        let header: string
+        if (sepIdx !== -1) {
+          // Extract rows that are data rows (start with '|', not separator/header)
+          const afterSep = sectionInner.slice(sepIdx + TABLE_SEP.length + 1)
+          existingRows = afterSep
+            .split('\n')
+            .filter(l => l.startsWith('|') && !l.startsWith('|-----'))
+          header = sectionInner.slice(0, sepIdx + TABLE_SEP.length)
+        } else {
+          header = [
+            '',
+            '### Sustentação Semanal',
+            '',
+            '| Semana | Abertos | Breach | SLA 7d |',
+            TABLE_SEP,
+          ].join('\n')
+        }
+
+        // Prepend new row and apply retention (max 12)
+        const allRows = [entryLine, ...existingRows].slice(0, RETENTION.SUSTENTACAO_SEMANAL!)
+        const newInner = header + '\n' + allRows.join('\n') + '\n'
+        content = content.slice(0, openIdx + open.length) + newInner + content.slice(closeIdx)
+      }
+
+      writeFileSync(filePath, content, 'utf-8')
+      log.debug('sustentacao semanal persistida', { slug, semana: entry.semana })
+    } catch (err) {
+      log.warn('falha ao persistir sustentacao semanal', { slug, error: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   // ── Section management (private) ──────────────────────────
