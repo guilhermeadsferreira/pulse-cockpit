@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.12
-last_updated: "2026-04-02T16:48:14.527Z"
+last_updated: "2026-04-02T16:51:01.634Z"
 progress:
   total_phases: 16
   completed_phases: 8
@@ -88,6 +88,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 999.12]: fetchSustentacaoForReport não lê/grava history.json — responsabilidade do IPC handler que tem acesso ao workspacePath
 - [Phase 999.12]: Sustentação omitida silenciosamente no Daily Report quando snapshot null — sem seção vazia
 - [Phase 999.12]: Cruzamento porAssignee usa slug como chave, fallback para slug bruto quando pessoa não encontrada
+- [Phase 999.12]: writeSustentacaoWeekly usa tabela markdown com retention por contagem de linhas — dados de suporte são tabulares por natureza
+- [Phase 999.12]: Seção Sustentação adicionada após Resumo do Time no Weekly — hierarquia visual: sumário do time primeiro, detalhe de suporte depois
 
 ## Phases
 
@@ -137,6 +139,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | Phase 999.11 P02 | 3min | 1 tasks | 1 files |
 | Phase 999.11 P03 | 100s | 1 tasks | 1 files |
 | Phase 999.12 P01 | 2min | 2 tasks | 3 files |
+| Phase 999.12 P02 | 180 | 2 tasks | 2 files |
 
 ## Next Action
 
