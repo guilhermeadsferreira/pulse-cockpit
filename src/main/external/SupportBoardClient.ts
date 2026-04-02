@@ -26,6 +26,36 @@ function topN(counts: Record<string, number>, n: number): Array<{ key: string; c
     .map(([key, count]) => ({ key, count }))
 }
 
+/**
+ * Calcula SLA compliance rate para uma janela de dias.
+ * Retorna null quando não há tickets resolvidos na janela (exibir "—" na UI, não 100%).
+ * Ticket fechado no mesmo dia que aberto (ageDias = 0) conta como compliant (0 <= threshold).
+ */
+function calcularCompliance(
+  issues: Array<{ statusCategory: string; resolved: string | null; created: string; type: string }>,
+  slaThresholds: Record<string, number>,
+  windowDias: number
+): number | null {
+  const cutoff = Date.now() - windowDias * 24 * 60 * 60 * 1000
+  const resolved = issues.filter(
+    (i) =>
+      i.statusCategory === 'done' &&
+      i.resolved !== null &&
+      new Date(i.resolved).getTime() >= cutoff
+  )
+
+  if (resolved.length === 0) return null // sem dados = não exibir percentual
+
+  const compliant = resolved.filter((i) => {
+    const threshold = slaThresholds[i.type] ?? DEFAULT_SLA_DIAS
+    const ageMs = new Date(i.resolved!).getTime() - new Date(i.created).getTime()
+    const ageDiasResolved = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+    return ageDiasResolved <= threshold
+  })
+
+  return Math.round((compliant.length / resolved.length) * 100)
+}
+
 export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promise<SupportBoardSnapshot> {
   const { config, projectKey, slaThresholds = {} } = input
   const client = new JiraClient(config)
@@ -99,6 +129,10 @@ export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promis
   const topTipos = topN(tipoCounts, TOP_N).map(({ key, count }) => ({ tipo: key, count }))
   const topLabels = topN(labelCounts, TOP_N).map(({ key, count }) => ({ label: key, count }))
 
+  // Calcular compliance rates (usa JiraIssue[] completo — não disponível no snapshot)
+  const complianceRate7d = calcularCompliance(issues, slaThresholds, 7)
+  const complianceRate30d = calcularCompliance(issues, slaThresholds, 30)
+
   return {
     atualizadoEm: new Date().toISOString(),
     ticketsAbertos: abertos.length,
@@ -107,5 +141,8 @@ export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promis
     topLabels,
     ticketsEmBreach,
     porAssignee: assigneeCounts,
+    complianceRate7d,
+    complianceRate30d,
+    history: [], // preenchido pelo IPC handler após ler history.json (ver Plan 02)
   }
 }
