@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.5
-last_updated: "2026-04-02T01:26:17.041Z"
+last_updated: "2026-04-02T01:30:02.771Z"
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 23
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State — Pulse Cockpit V2.1
@@ -72,6 +72,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 999.5-03]: onBlur (não onChange) para parse do JSON — evita erros de parse durante digitação intermediária
 - [Phase 999.5]: fetchAndCacheSustentacao extraida como funcao privada — ipcMain.emit nao funciona para handlers registrados com handle; funcao compartilhada garante comportamento correto em ambos os handlers
 - [Phase 999.5]: runAnalysis adicionado no preload prevendo Plan 06 (prompt IA) — handler sera criado naquele plan
+- [Phase 999.5-05]: Wrench (lucide-react) como ícone de Sustentação na Sidebar
+- [Phase 999.5-05]: SustentacaoView com 3 estados: loading, não-configurado (onboarding) e dados carregados
 
 ## Phases
 
@@ -113,6 +115,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | Phase 999.5 P02 | 42 | 1 tasks | 1 files |
 | Phase 999.5 P03 | 60 | 1 tasks | 1 files |
 | Phase 999.5 P04 | 2min | 2 tasks | 2 files |
+| Phase 999.5 P05 | 104 | 2 tasks | 3 files |
 
 ## Next Action
 
