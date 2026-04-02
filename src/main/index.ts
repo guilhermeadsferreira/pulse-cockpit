@@ -28,6 +28,8 @@ import { GitHubClient } from './external/GitHubClient'
 import { SystemAuditor } from './audit/SystemAuditor'
 import { fetchSupportBoardMetrics } from './external/SupportBoardClient'
 import type { SupportBoardSnapshot } from '../renderer/src/types/ipc'
+import { buildSustentacaoPrompt } from './prompts/sustentacao-analysis.prompt'
+import { MetricsWriter } from './external/MetricsWriter'
 import yaml from 'js-yaml'
 
 interface ExternalJiraSnapshot {
@@ -1165,6 +1167,79 @@ function registerIpcHandlers(): void {
     } catch { /* ignore */ }
 
     return fetchAndCacheSustentacao()
+  })
+
+  ipcMain.handle('sustentacao:run-analysis', async (): Promise<{ analysis?: string; error?: string }> => {
+    const settings = SettingsManager.load()
+    const { jiraSupportProjectKey, workspacePath, claudeBinPath } = settings
+
+    if (!jiraSupportProjectKey) {
+      return { error: 'Board de sustentação não configurado' }
+    }
+
+    if (!claudeBinPath) {
+      return { error: 'Claude CLI não configurado. Configure o caminho em Settings.' }
+    }
+
+    const snapshot = await fetchAndCacheSustentacao()
+
+    if (!snapshot) {
+      return { error: 'Dados do board indisponíveis — atualize antes de analisar' }
+    }
+
+    const prompt = buildSustentacaoPrompt(snapshot)
+
+    Logger.getInstance().child('IPC').info('sustentacao:run-analysis iniciando análise', {
+      ticketsEmBreach: snapshot.ticketsEmBreach.length,
+      promptLength: prompt.length,
+    })
+
+    const result = await runClaudePrompt(claudeBinPath, prompt, 90_000)
+
+    if (!result.success) {
+      return { error: result.error ?? 'Falha na análise de IA' }
+    }
+
+    const analysis = result.rawOutput ?? (typeof result.data === 'string' ? result.data : JSON.stringify(result.data))
+
+    Logger.getInstance().child('IPC').info('sustentacao:run-analysis análise concluída', {
+      analysisLength: analysis?.length ?? 0,
+    })
+
+    // Persistir no metricas.md de cada assignee com >= 3 tickets
+    const SIGNIFICANT_TICKET_THRESHOLD = 3
+    const metricsWriter = new MetricsWriter(workspacePath)
+    const personRegistry = new PersonRegistry(workspacePath)
+    const people = personRegistry.list()
+
+    for (const [assigneeKey, count] of Object.entries(snapshot.porAssignee)) {
+      if (count < SIGNIFICANT_TICKET_THRESHOLD) continue
+
+      // Mapear assigneeKey (email ou nome do Jira) para slug da pessoa
+      const person = people.find(
+        (p) =>
+          p.jiraEmail === assigneeKey ||
+          p.nome.toLowerCase().includes(assigneeKey.toLowerCase()) ||
+          assigneeKey.toLowerCase().includes(p.nome.split(' ')[0].toLowerCase()),
+      )
+
+      if (!person) {
+        Logger.getInstance().child('IPC').warn('sustentacao:run-analysis assignee sem match no PersonRegistry', { assigneeKey })
+        continue
+      }
+
+      try {
+        metricsWriter.writeSustentacaoAnalysis(person.slug, analysis)
+        Logger.getInstance().child('IPC').info('sustentacao:run-analysis análise persistida', { slug: person.slug, assigneeKey })
+      } catch (err) {
+        Logger.getInstance().child('IPC').warn('sustentacao:run-analysis falha ao persistir (graceful)', {
+          slug: person.slug,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    return { analysis }
   })
 }
 
