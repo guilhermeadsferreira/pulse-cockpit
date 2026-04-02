@@ -26,7 +26,7 @@ import { WeeklyReportGenerator } from './external/WeeklyReportGenerator'
 import { MonthlyReportGenerator } from './external/MonthlyReportGenerator'
 import { GitHubClient } from './external/GitHubClient'
 import { SystemAuditor } from './audit/SystemAuditor'
-import { fetchSupportBoardMetrics } from './external/SupportBoardClient'
+import { fetchSupportBoardMetricsWithIssues, calcularAlertas } from './external/SupportBoardClient'
 import type { SupportBoardSnapshot, SustentacaoHistoryEntry } from '../renderer/src/types/ipc'
 import { buildSustentacaoPrompt } from './prompts/sustentacao-analysis.prompt'
 import { MetricsWriter } from './external/MetricsWriter'
@@ -1141,14 +1141,17 @@ function registerIpcHandlers(): void {
           Logger.getInstance().child('IPC').info('sustentacao:get-data cache hit')
           const historyFile = join(cacheDir, 'history.json')
           const historyData = readHistory(historyFile).slice(-30)
-          return { ...cached.data, history: historyData }
+          // Cache hit — alertas calculados on-the-fly sobre dados cached (sem issues[] raw)
+          // Graceful: sem issues raw disponivel no cache, alertas D-07 ficam silenciosos
+          const alertasCached = calcularAlertas(cached.data, historyData, [], jiraSlaThresholds ?? {})
+          return { ...cached.data, history: historyData, alertas: alertasCached }
         }
       }
     } catch { /* cache inválido — refetch */ }
 
     Logger.getInstance().child('IPC').info('sustentacao:get-data buscando board', { projectKey: jiraSupportProjectKey })
 
-    const data = await fetchSupportBoardMetrics({
+    const { snapshot: data, issues } = await fetchSupportBoardMetricsWithIssues({
       config: { baseUrl: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken },
       projectKey: jiraSupportProjectKey,
       slaThresholds: jiraSlaThresholds,
@@ -1193,9 +1196,14 @@ function registerIpcHandlers(): void {
       })
     }
 
+    // Calcular alertas proativos (per D-10, D-11)
+    const historyForAlerts = readHistory(join(cacheDir, 'history.json'))
+    const alertas = calcularAlertas(data, historyForAlerts, issues, jiraSlaThresholds ?? {})
+    const dataComAlertas = { ...data, alertas }
+
     const historyFile = join(cacheDir, 'history.json')
     const historyData = readHistory(historyFile).slice(-30)
-    return { ...data, history: historyData }
+    return { ...dataComAlertas, history: historyData }
   }
 
   ipcMain.handle('sustentacao:get-data', async (): Promise<SupportBoardSnapshot | null> => {

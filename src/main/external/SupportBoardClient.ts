@@ -1,6 +1,6 @@
-import { JiraClient, type JiraConfig } from './JiraClient'
+import { JiraClient, type JiraConfig, type JiraIssue } from './JiraClient'
 import { Logger } from '../logging/Logger'
-import type { SupportBoardSnapshot, SupportTicket, InOutSemanalEntry, RecorrenteDetectado } from '../../renderer/src/types/ipc'
+import type { SupportBoardSnapshot, SupportTicket, InOutSemanalEntry, RecorrenteDetectado, SustentacaoAlerta, SustentacaoHistoryEntry } from '../../renderer/src/types/ipc'
 import type { AppSettings } from '../registry/SettingsManager'
 
 const log = Logger.getInstance().child('SupportBoardClient')
@@ -129,7 +129,10 @@ function detectarRecorrentes(
     .sort((a, b) => b.ocorrencias - a.ocorrencias)
 }
 
-export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promise<SupportBoardSnapshot> {
+/** Variante interna que retorna snapshot + issues raw para calcular spike (D-07) */
+export async function fetchSupportBoardMetricsWithIssues(
+  input: SupportBoardInput
+): Promise<{ snapshot: Omit<SupportBoardSnapshot, 'alertas'>; issues: JiraIssue[] }> {
   const { config, projectKey, slaThresholds = {} } = input
   const client = new JiraClient(config)
 
@@ -213,7 +216,7 @@ export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promis
   const inOutSemanal = calcularInOutSemanal(issues, IN_OUT_SEMANAS)
   const recorrentesDetectados = detectarRecorrentes(issues, 30)
 
-  return {
+  const snapshot: Omit<SupportBoardSnapshot, 'alertas'> = {
     atualizadoEm: new Date().toISOString(),
     ticketsAbertos: abertos.length,
     ticketsFechadosUltimos30d: fechados30d.length,
@@ -223,10 +226,121 @@ export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promis
     porAssignee: assigneeCounts,
     complianceRate7d,
     complianceRate30d,
-    history: [], // preenchido pelo IPC handler após ler history.json (ver Plan 02)
+    history: [], // preenchido pelo IPC handler após ler history.json
     inOutSemanal,
     recorrentesDetectados,
   }
+
+  return { snapshot, issues }
+}
+
+export async function fetchSupportBoardMetrics(input: SupportBoardInput): Promise<SupportBoardSnapshot> {
+  const { snapshot, issues: _issues } = await fetchSupportBoardMetricsWithIssues(input)
+  return { ...snapshot, alertas: [] }
+}
+
+/** Thresholds fixos — nao configuravel nesta fase (per D-08) */
+const ALRT_BREACH_DELTA = 2        // breach crescente: +2 vs 7 dias atras
+const ALRT_SLA_MULTIPLIER = 2      // ticket envelhecendo: >2x o SLA do tipo
+const ALRT_FILA_DAYS = 3           // fila crescendo: 3 dias consecutivos subindo
+const ALRT_SPIKE_COUNT = 3         // spike: 3+ tickets do mesmo tipo+label
+const ALRT_SPIKE_WINDOW_MS = 2 * 60 * 60 * 1000  // janela spike: 2h
+
+/**
+ * Calcula alertas proativos a partir dos dados disponiveis.
+ * Retorna array vazio quando sem alertas — nunca lanca excecao.
+ *
+ * @param snapshot - snapshot atual (sem alertas ainda)
+ * @param history  - entradas diarias do history.json (pode ser [])
+ * @param issues   - issues raw do Jira (para calculo de spike por created timestamp)
+ * @param slaThresholds - mapa tipo → dias (default 5 para tipos nao mapeados)
+ */
+export function calcularAlertas(
+  snapshot: Omit<SupportBoardSnapshot, 'alertas'>,
+  history: SustentacaoHistoryEntry[],
+  issues: Array<{ created: string; type: string; labels: string[]; statusCategory: string }>,
+  slaThresholds: Record<string, number> = {}
+): SustentacaoAlerta[] {
+  const alertas: SustentacaoAlerta[] = []
+
+  // D-04: Breach crescente — breach atual vs 7 dias atras por +2 ou mais
+  if (history.length >= 2) {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+    const ref = history
+      .filter((e) => e.fetchedAt <= Date.now() - sevenDaysMs)
+      .sort((a, b) => b.fetchedAt - a.fetchedAt)[0]
+    if (ref) {
+      const delta = snapshot.ticketsEmBreach.length - ref.breachCount
+      if (delta >= ALRT_BREACH_DELTA) {
+        alertas.push({
+          tipo: 'breach_crescente',
+          mensagem: `Breach subiu ${delta} tickets em relacao a 7 dias atras (${ref.breachCount} → ${snapshot.ticketsEmBreach.length})`,
+          severidade: delta >= 5 ? 'critico' : 'atencao',
+        })
+      }
+    }
+  }
+
+  // D-05: Ticket envelhecendo — aberto por mais de 2x o SLA do seu tipo
+  for (const ticket of snapshot.ticketsEmBreach) {
+    const threshold = slaThresholds[ticket.type] ?? DEFAULT_SLA_DIAS
+    if (ticket.ageDias > ALRT_SLA_MULTIPLIER * threshold) {
+      alertas.push({
+        tipo: 'ticket_envelhecendo',
+        mensagem: `${ticket.key}: ${ticket.ageDias}d aberto (limite ${threshold}d, threshold critico ${ALRT_SLA_MULTIPLIER * threshold}d)`,
+        severidade: 'critico',
+      })
+    }
+  }
+
+  // D-06: Fila crescendo — ticketsAbertos subiu N dias consecutivos
+  if (history.length >= ALRT_FILA_DAYS) {
+    const recent = history
+      .slice()
+      .sort((a, b) => a.fetchedAt - b.fetchedAt)
+      .slice(-(ALRT_FILA_DAYS + 1))  // ultimos N+1 para verificar N consecutivos
+    let consecutivos = 0
+    for (let i = 1; i < recent.length; i++) {
+      if (recent[i].ticketsAbertos > recent[i - 1].ticketsAbertos) {
+        consecutivos++
+      } else {
+        consecutivos = 0
+      }
+    }
+    if (consecutivos >= ALRT_FILA_DAYS) {
+      alertas.push({
+        tipo: 'fila_crescendo',
+        mensagem: `Fila crescendo ha ${consecutivos} dias consecutivos (${recent[recent.length - 1].ticketsAbertos} tickets abertos)`,
+        severidade: 'atencao',
+      })
+    }
+  }
+
+  // D-07: Spike de incidente — 3+ tickets do mesmo tipo+label criados nas ultimas 2h
+  const cutoffSpike = Date.now() - ALRT_SPIKE_WINDOW_MS
+  const abertosRecentes = issues.filter(
+    (i) => i.statusCategory !== 'done' && new Date(i.created).getTime() >= cutoffSpike
+  )
+  const spikeCounts: Record<string, number> = {}
+  for (const issue of abertosRecentes) {
+    for (const label of issue.labels.length > 0 ? issue.labels : ['_sem_label']) {
+      const key = `${issue.type}::${label}`
+      spikeCounts[key] = (spikeCounts[key] ?? 0) + 1
+    }
+  }
+  for (const [key, count] of Object.entries(spikeCounts)) {
+    if (count >= ALRT_SPIKE_COUNT) {
+      const [tipo, label] = key.split('::')
+      const labelDesc = label === '_sem_label' ? '' : ` / ${label}`
+      alertas.push({
+        tipo: 'spike_incidente',
+        mensagem: `${count} tickets "${tipo}${labelDesc}" criados nas ultimas 2h — possivel incidente`,
+        severidade: 'critico',
+      })
+    }
+  }
+
+  return alertas
 }
 
 /**
