@@ -65,6 +65,12 @@ export interface AppSettings {
   dailyReportEnabled?: boolean
   dailyReportTime?: string
   sprintReportEnabled?: boolean
+
+  // Sustentação
+  jiraSupportBoardId?: number
+  jiraSupportProjectKey?: string
+  /** Threshold de SLA por tipo de issue (tipo → dias). Padrão: todos os tipos com 5 dias. */
+  jiraSlaThresholds?: Record<string, number>
 }
 
 const SETTINGS_DIR  = join(homedir(), '.pulsecockpit')
