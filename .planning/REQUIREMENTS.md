@@ -95,6 +95,16 @@ Requirements para este milestone. Cada um mapeia para phases do roadmap.
 - [x] **SUST-04**: SustentacaoView como tela top-level na sidebar — exibe metricas do board, tickets em breach e estado de nao-configurado
 - [x] **SUST-05**: Analise de IA manual (botao "Analisar") extrai padroes, oportunidades de automacao e causa raiz; persiste no metricas.md via bloco SUSTENTACAO:ANALISE para assignees com >= 3 tickets
 
+### Pipeline Health & Flow Metrics (Phase 999.9)
+
+- [ ] **PLHF-01**: categorizeStatus retorna 6 categorias finas (queue_dev, dev, queue_review, review, qa, queue_deploy) distinguindo fila de trabalho ativo
+- [ ] **PLHF-02**: Secao Pipeline Health no daily report com tabela: Fase, Tasks, Tempo medio, Mais antiga, Baseline (sprint), Status
+- [ ] **PLHF-03**: Baseline historico por fase computado on-the-fly a partir das done tasks do sprint via changelog
+- [ ] **PLHF-04**: Status emoji (ok/warning/critical) conforme thresholds: Dev 5d, CR 3d, QA 3d, Ready to Deploy 2d
+- [ ] **PLHF-05**: Commits compactados por repo na secao "O que fez ontem" (contagem em vez de listing individual)
+- [ ] **PLHF-06**: PRs merged e reviews mantidos como itens individuais; review comments substantivos (> 20 chars) preservados
+- [ ] **PLHF-07**: Haiku analysis recebe dados de Pipeline Health como input e gera insights sobre gargalos do pipeline
+
 ## v2 Requirements
 
 Nao ha v2 neste milestone — todas as tasks identificadas estao no escopo v1.
@@ -162,13 +172,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SUST-04 | Phase 999.5 | Planned |
 | SUST-05 | Phase 999.5 | Planned |
 
+| PLHF-01 | Phase 999.9 | Planned |
+| PLHF-02 | Phase 999.9 | Planned |
+| PLHF-03 | Phase 999.9 | Planned |
+| PLHF-04 | Phase 999.9 | Planned |
+| PLHF-05 | Phase 999.9 | Planned |
+| PLHF-06 | Phase 999.9 | Planned |
+| PLHF-07 | Phase 999.9 | Planned |
+
 **Coverage:**
 - v1 requirements: 35 total
 - Mapped to phases: 35
 - Unmapped: 0
 - Backlog requirements (999.7): 6 total
 - Backlog requirements (999.5): 5 total
+- Backlog requirements (999.9): 7 total
 
 ---
 *Requirements defined: 2026-03-31*
-*Last updated: 2026-04-02 — added SUST-01 to SUST-05 for Phase 999.5*
+*Last updated: 2026-04-02 — added PLHF-01 to PLHF-07 for Phase 999.9*
