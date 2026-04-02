@@ -5,6 +5,7 @@ import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
 import { JiraClient, JiraConfig, type DailyStandupItem, type JiraIssue, type JiraChangelogEntry } from './JiraClient'
 import { GitHubClient, GitHubConfig, type GitHubCommit, type GitHubPR, type GitHubReview, type GitHubReviewComment } from './GitHubClient'
 import { ExternalDataPass } from './ExternalDataPass'
+import { MetricsWriter, type AlertEntry } from './MetricsWriter'
 import { runClaudePrompt } from '../ingestion/ClaudeRunner'
 import { buildDailyAnalysisPrompt } from '../prompts/daily-analysis.prompt'
 import { Logger } from '../logging/Logger'
@@ -132,6 +133,35 @@ export class DailyReportGenerator {
     mkdirSync(this.relatoriosDir, { recursive: true })
     writeFileSync(filePath, finalContent, 'utf-8')
     log.info('daily report gerado', { date: today, path: filePath })
+
+    // Persistir alertas ativos no metricas.md (per D-01, D-12)
+    const metricsWriter = new MetricsWriter(this.workspacePath)
+    for (const person of personReports) {
+      const alerts: AlertEntry[] = []
+      // Blockers
+      for (const b of person.blockers) {
+        alerts.push({ tipo: 'blocker', descricao: `${b.key}: ${b.summary}`, desde: today })
+      }
+      // WIP alto (>= WIP_WARNING_THRESHOLD)
+      if (person.activeTasks.length >= WIP_WARNING_THRESHOLD) {
+        alerts.push({ tipo: 'wip_alto', descricao: `${person.activeTasks.length} tasks ativas simultaneamente`, desde: today })
+      }
+      // Cycle time warning
+      for (const task of person.activeTasks) {
+        if (task.alert === 'warning') {
+          alerts.push({ tipo: 'cycle_time', descricao: `${task.key}: ${task.daysInStatus}d em ${task.status}`, desde: today })
+        }
+      }
+      // Per D-01: so gravar se ha alertas. Dias normais nao gravam nada.
+      if (alerts.length > 0) {
+        try {
+          metricsWriter.writeAlerts(person.slug, alerts)
+        } catch (err) {
+          log.warn('falha ao persistir alertas no metricas.md', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+    }
+
     return filePath
   }
 

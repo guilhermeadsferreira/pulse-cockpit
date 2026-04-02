@@ -4,6 +4,7 @@ import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
 import { ExternalDataPass, type ExternalDataSnapshot } from './ExternalDataPass'
 import { GitHubClient, GitHubConfig } from './GitHubClient'
+import { MetricsWriter, type MonthlyEntry, type MomentoAtualEntry } from './MetricsWriter'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('MonthlyReportGenerator')
@@ -125,6 +126,73 @@ export class MonthlyReportGenerator {
     mkdirSync(this.relatoriosDir, { recursive: true })
     writeFileSync(filePath, content, 'utf-8')
     log.info('monthly report gerado', { year: targetYear, month: targetMonth, path: filePath })
+
+    // Persistir metricas no metricas.md (per D-04, D-12)
+    const metricsWriter = new MetricsWriter(this.workspacePath)
+    for (const person of personReports) {
+      try {
+        const jira = person.snapshot?.jira
+        const github = person.snapshot?.github
+
+        // Calcular deltas vs mes anterior (per D-09)
+        const deltas: Record<string, string> = {}
+        if (person.previous.commits30d !== undefined) {
+          const diff = person.monthlyGithub.commits - person.previous.commits30d
+          deltas['commits'] = `${person.monthlyGithub.commits} (${diff >= 0 ? '+' : ''}${diff} vs mes anterior)`
+        } else {
+          deltas['commits'] = `${person.monthlyGithub.commits} (sem comparacao)`
+        }
+        if (person.previous.prsMerged30d !== undefined) {
+          const diff = person.monthlyGithub.prsMerged - person.previous.prsMerged30d
+          deltas['PRs merged'] = `${person.monthlyGithub.prsMerged} (${diff >= 0 ? '+' : ''}${diff} vs mes anterior)`
+        } else {
+          deltas['PRs merged'] = `${person.monthlyGithub.prsMerged} (sem comparacao)`
+        }
+        deltas['reviews'] = `${person.monthlyGithub.reviews}`
+        deltas['cycle time'] = `${jira?.tempoMedioCicloDias ?? 0}d`
+        deltas['collaboration'] = `${github?.collaborationScore ?? 0}`
+
+        // Destaques e pontos de atencao
+        const destaques: string[] = []
+        const pontosAtencao: string[] = []
+
+        if (jira?.workloadScore === 'alto') {
+          pontosAtencao.push('Workload alto no periodo')
+        }
+        if (jira?.blockersAtivos && jira.blockersAtivos.length > 0) {
+          pontosAtencao.push(`${jira.blockersAtivos.length} blocker(s) ativo(s)`)
+        }
+        if (person.monthlyGithub.prsMerged > 0) {
+          destaques.push(`${person.monthlyGithub.prsMerged} PRs merged`)
+        }
+        if (person.monthlyGithub.reviews > 0) {
+          destaques.push(`${person.monthlyGithub.reviews} code reviews`)
+        }
+
+        const monthlyEntry: MonthlyEntry = {
+          mes: `${MESES[targetMonth - 1]} ${targetYear}`,
+          destaques,
+          pontosAtencao,
+          deltasVsMesAnterior: deltas,
+        }
+        metricsWriter.writeMonthly(person.slug, monthlyEntry)
+
+        // Atualizar Momento Atual com dados mensais
+        const velocityTrend = person.baseline
+          ? (person.monthlyGithub.prsMerged > person.baseline.avgPRsMerged ? '↑' : person.monthlyGithub.prsMerged < person.baseline.avgPRsMerged ? '↓' : '↔')
+          : '↔'
+        const momento: MomentoAtualEntry = {
+          velocity: `${jira?.storyPointsSprint ?? 0} SP ${velocityTrend}`,
+          cycleTime: `${jira?.tempoMedioCicloDias ?? 0}d`,
+          codeReview: `${person.monthlyGithub.reviews} reviews, ${github?.avgCommentsPerReview?.toFixed(1) ?? '0'} comments/PR`,
+          alertasAtivos: jira?.blockersAtivos?.length ?? 0,
+        }
+        metricsWriter.updateMomentoAtual(person.slug, momento)
+      } catch (err) {
+        log.warn('falha ao persistir metricas mensais', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     return filePath
   }
 

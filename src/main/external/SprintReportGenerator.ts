@@ -5,6 +5,7 @@ import { ExternalDataPass, type ExternalDataSnapshot } from './ExternalDataPass'
 import type { JiraSprint } from './JiraClient'
 import type { JiraPersonMetrics, SprintSummary } from './JiraMetrics'
 import type { GitHubPersonMetrics } from './GitHubMetrics'
+import { MetricsWriter, type SprintEntry, type MomentoAtualEntry } from './MetricsWriter'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('SprintReportGenerator')
@@ -85,6 +86,45 @@ export class SprintReportGenerator {
     mkdirSync(this.relatoriosDir, { recursive: true })
     writeFileSync(filePath, content, 'utf-8')
     log.info('sprint report gerado', { sprint: sprint.name, path: filePath })
+
+    // Persistir metricas no metricas.md (per D-03, D-12)
+    const metricsWriter = new MetricsWriter(this.workspacePath)
+    for (const person of personData) {
+      try {
+        const jira = person.snapshot?.jira
+        const github = person.snapshot?.github
+
+        // Extrair bloqueios do snapshot
+        const bloqueios: string[] = []
+        if (jira?.blockersAtivos) {
+          for (const b of jira.blockersAtivos) {
+            bloqueios.push(`${b.key}: ${b.summary}`)
+          }
+        }
+
+        const sprintEntry: SprintEntry = {
+          nome: sprint.name,
+          spEntregues: jira?.sprintAtual?.entregue ?? 0,
+          spPlanejados: jira?.sprintAtual?.comprometido ?? 0,
+          cycleTimeMedio: jira?.tempoMedioCicloDias ?? 0,
+          entregas: [],
+          bloqueios,
+        }
+        metricsWriter.writeSprint(person.slug, sprintEntry)
+
+        // Atualizar Momento Atual com dados do sprint
+        const momento: MomentoAtualEntry = {
+          velocity: `${sprintEntry.spEntregues}/${sprintEntry.spPlanejados} SP`,
+          cycleTime: `${sprintEntry.cycleTimeMedio}d`,
+          codeReview: `${github?.avgCommentsPerReview?.toFixed(1) ?? '0'} comments/PR`,
+          alertasAtivos: bloqueios.length,
+        }
+        metricsWriter.updateMomentoAtual(person.slug, momento)
+      } catch (err) {
+        log.warn('falha ao persistir metricas de sprint', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     return filePath
   }
 

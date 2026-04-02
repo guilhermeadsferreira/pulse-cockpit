@@ -78,6 +78,15 @@ Requirements para este milestone. Cada um mapeia para phases do roadmap.
 - [x] **UX-02**: Risk panel estendido para pares e gestores (nao apenas liderados)
 - [x] **UX-03**: Agenda generation agendada: `checkAgendaGeneration()` 2 dias antes do 1:1 esperado
 
+### Metrics Writer — Perfil Vivo (Phase 999.7)
+
+- [x] **MTRW-01**: MetricsWriter classe com secoes gerenciadas (Momento Atual, Alertas, Semanas, Sprints, Meses) e retencao automatica
+- [x] **MTRW-02**: Daily report persiste alertas ativos (blockers, WIP alto, cycle time warning) no metricas.md — dias normais nao gravam nada
+- [x] **MTRW-03**: Weekly report persiste metricas da semana (velocity, PRs, reviews, collaboration, cycle time) com delta vs semana anterior
+- [x] **MTRW-04**: Weekly report atualiza secao Momento Atual com tendencias resumidas (setas unicode)
+- [x] **MTRW-05**: Sprint report persiste resultado consolidado (SP entregues/planejados, cycle time, entregas, bloqueios)
+- [x] **MTRW-06**: Monthly report persiste tendencia mensal (destaques, pontos de atencao, deltas vs mes anterior)
+
 ## v2 Requirements
 
 Nao ha v2 neste milestone — todas as tasks identificadas estao no escopo v1.
@@ -133,12 +142,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UX-01 | Phase 4 | Complete |
 | UX-02 | Phase 4 | Complete |
 | UX-03 | Phase 4 | Complete |
+| MTRW-01 | Phase 999.7 | Planned |
+| MTRW-02 | Phase 999.7 | Planned |
+| MTRW-03 | Phase 999.7 | Planned |
+| MTRW-04 | Phase 999.7 | Planned |
+| MTRW-05 | Phase 999.7 | Planned |
+| MTRW-06 | Phase 999.7 | Planned |
 
 **Coverage:**
 - v1 requirements: 35 total
 - Mapped to phases: 35
 - Unmapped: 0
+- Backlog requirements (999.7): 6 total
 
 ---
 *Requirements defined: 2026-03-31*
-*Last updated: 2026-04-01 — reconciled after milestone completion*
+*Last updated: 2026-04-01 — added MTRW-01 to MTRW-06 for Phase 999.7*

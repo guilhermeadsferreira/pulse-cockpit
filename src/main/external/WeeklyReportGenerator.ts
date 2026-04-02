@@ -5,6 +5,7 @@ import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
 import { ExternalDataPass, type ExternalDataSnapshot } from './ExternalDataPass'
 import { JiraClient, JiraConfig } from './JiraClient'
 import { GitHubClient, GitHubConfig } from './GitHubClient'
+import { MetricsWriter, type WeeklyEntry, type MomentoAtualEntry } from './MetricsWriter'
 import { Logger } from '../logging/Logger'
 
 const log = Logger.getInstance().child('WeeklyReportGenerator')
@@ -121,6 +122,40 @@ export class WeeklyReportGenerator {
     mkdirSync(this.relatoriosDir, { recursive: true })
     writeFileSync(filePath, content, 'utf-8')
     log.info('weekly report gerado', { start, end, path: filePath })
+
+    // Persistir metricas semanais e Momento Atual no metricas.md (per D-02, D-09, D-12)
+    const metricsWriter = new MetricsWriter(this.workspacePath)
+    for (const person of personReports) {
+      try {
+        const jira = person.snapshot?.jira
+        const github = person.snapshot?.github
+        const weeklyEntry: WeeklyEntry = {
+          semana: `${start} a ${end}`,
+          velocity: jira?.storyPointsSprint ?? 0,
+          deltaSP: null,
+          prsMerged: person.weeklyGithub.prsMerged,
+          reviews: person.weeklyGithub.reviews,
+          collaborationScore: github?.collaborationScore ?? 0,
+          cycleTimeMedio: jira?.tempoMedioCicloDias ?? 0,
+        }
+        metricsWriter.writeWeekly(person.slug, weeklyEntry)
+
+        // Atualizar Momento Atual (per D-07)
+        const velocityTrend = person.baseline
+          ? (weeklyEntry.velocity > person.baseline.avgPRsMerged ? '\u2191' : weeklyEntry.velocity < person.baseline.avgPRsMerged ? '\u2193' : '\u2194')
+          : '\u2194'
+        const momento: MomentoAtualEntry = {
+          velocity: `${weeklyEntry.velocity} SP ${velocityTrend}`,
+          cycleTime: `${weeklyEntry.cycleTimeMedio}d`,
+          codeReview: `${weeklyEntry.reviews} reviews, ${github?.avgCommentsPerReview?.toFixed(1) ?? '0'} comments/PR`,
+          alertasAtivos: 0,
+        }
+        metricsWriter.updateMomentoAtual(person.slug, momento)
+      } catch (err) {
+        log.warn('falha ao persistir metricas semanais', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     return filePath
   }
 
