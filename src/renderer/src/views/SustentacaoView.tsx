@@ -9,6 +9,8 @@ export function SustentacaoView() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -39,11 +41,17 @@ export function SustentacaoView() {
   }
 
   async function handleAnalyze() {
-    if (loading || refreshing) return
+    if (loading || refreshing || analyzing) return
+    setAnalyzing(true)
+    setAnalysisResult(null)
+    setError(null)
     try {
-      await window.api.sustentacao.runAnalysis()
+      const result = await window.api.sustentacao.runAnalysis()
+      setAnalysisResult(result?.analysis ?? null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao analisar')
+    } finally {
+      setAnalyzing(false)
     }
   }
 
@@ -128,17 +136,19 @@ export function SustentacaoView() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={handleAnalyze}
-            disabled={loading || refreshing}
+            disabled={loading || refreshing || analyzing}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)',
               background: 'var(--surface)', color: 'var(--text-secondary)',
               fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600,
-              cursor: loading || refreshing ? 'not-allowed' : 'pointer',
-              opacity: loading || refreshing ? 0.5 : 1,
+              cursor: loading || refreshing || analyzing ? 'not-allowed' : 'pointer',
+              opacity: loading || refreshing || analyzing ? 0.5 : 1,
             }}
           >
-            Analisar
+            {analyzing
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Analisando…</>
+              : 'Analisar'}
           </button>
           <button
             onClick={handleRefresh}
@@ -193,6 +203,18 @@ export function SustentacaoView() {
             highlight={breachCount > 0}
           />
         </div>
+
+        {/* Análise de IA */}
+        {analysisResult && (
+          <Section title="Análise de IA">
+            <div style={{
+              fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65,
+              whiteSpace: 'pre-wrap', fontFamily: 'var(--font)',
+            }}>
+              {analysisResult}
+            </div>
+          </Section>
+        )}
 
         {/* Distribuição por Tipo */}
         {snapshot.topTipos.length > 0 && (
