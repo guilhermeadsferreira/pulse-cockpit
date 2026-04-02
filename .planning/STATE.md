@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.5
-last_updated: "2026-04-02T01:20:39.942Z"
+last_updated: "2026-04-02T01:23:19.492Z"
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State — Pulse Cockpit V2.1
@@ -68,6 +68,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 999.5-01]: 'sustentacao' adicionado apos 'audit' no ViewName — mantem ordem existente intacta
 - [Phase 999.5-02]: searchIssuesByAssignee chamado com assignee='' e JQL customizado — segundo parâmetro sobrescreve query default quando presente
 - [Phase 999.5-02]: Contagens de tipos/labels/assignee baseadas apenas em tickets abertos (statusCategory !== 'done')
+- [Phase 999.5-03]: slaThresholdsText como estado local string inicializado via useEffect — evita re-render a cada keystroke no JSON
+- [Phase 999.5-03]: onBlur (não onChange) para parse do JSON — evita erros de parse durante digitação intermediária
 
 ## Phases
 
@@ -107,6 +109,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | 999.7 | 02 | 2min | 2/2 | 2 |
 | Phase 999.5 P01 | 67s | 2 tasks | 3 files |
 | Phase 999.5 P02 | 42 | 1 tasks | 1 files |
+| Phase 999.5 P03 | 60 | 1 tasks | 1 files |
 
 ## Next Action
 
