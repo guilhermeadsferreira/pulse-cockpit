@@ -134,11 +134,11 @@ Plans:
 **Goal:** Os report generators (Daily, Weekly, Sprint, Monthly) persistem dados estruturados em metricas.md por pessoa, criando retrato quantitativo rastreavel que complementa o perfil qualitativo
 **Depends on**: Nothing (independent backlog)
 **Requirements:** MTRW-01, MTRW-02, MTRW-03, MTRW-04, MTRW-05, MTRW-06
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 999.7-01-PLAN.md — MetricsWriter + integracao Daily e Weekly (MTRW-01, MTRW-02, MTRW-03, MTRW-04)
-- [ ] 999.7-02-PLAN.md — Integracao Sprint e Monthly (MTRW-05, MTRW-06)
+- [x] 999.7-02-PLAN.md — Integracao Sprint e Monthly (MTRW-05, MTRW-06)
 
 ### Phase 999.8: Visão de PRs abertas com status de revisão (BACKLOG)
 
