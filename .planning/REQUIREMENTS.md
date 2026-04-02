@@ -107,8 +107,8 @@ Requirements para este milestone. Cada um mapeia para phases do roadmap.
 
 ### Sustentacao Trending & SLA Compliance (Phase 999.11)
 
-- [ ] **STRD-01**: SustentacaoHistoryEntry definido como tipo exportado em ipc.ts; SupportBoardSnapshot estendido com complianceRate7d, complianceRate30d e history: SustentacaoHistoryEntry[]
-- [ ] **STRD-02**: fetchSupportBoardMetrics() calcula complianceRate7d e complianceRate30d usando JiraIssue[] completo em memoria (nao no renderer); retorna null quando sem tickets resolvidos na janela
+- [x] **STRD-01**: SustentacaoHistoryEntry definido como tipo exportado em ipc.ts; SupportBoardSnapshot estendido com complianceRate7d, complianceRate30d e history: SustentacaoHistoryEntry[]
+- [x] **STRD-02**: fetchSupportBoardMetrics() calcula complianceRate7d e complianceRate30d usando JiraIssue[] completo em memoria (nao no renderer); retorna null quando sem tickets resolvidos na janela
 - [ ] **STRD-03**: fetchAndCacheSustentacao() grava history.json a cada fetch real com deduplicacao diaria (YYYY-MM-DD) e retencao de 90 dias; retorna snapshot com history[] (ultimos 30) tanto em cache hit quanto em fetch real
 - [ ] **STRD-04**: SustentacaoView exibe dois novos cards de SLA Compliance (7d e 30d) com percentual ou "—" quando null
 - [ ] **STRD-05**: Cards existentes (Abertos, Fechados 30d, Breach) exibem delta indicator (seta + numero absoluto) vs snapshot de 7 dias atras; mini charts SVG de breach count e compliance % exibidos quando history.length >= 2
