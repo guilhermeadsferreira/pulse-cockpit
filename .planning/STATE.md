@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 999.13
-last_updated: "2026-04-02T18:17:51.255Z"
+last_updated: "2026-04-02T18:26:09.001Z"
 progress:
   total_phases: 16
   completed_phases: 9
@@ -93,6 +93,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 - [Phase 999.13]: topTipos agora inclui abertos + fechados dos ultimos 30d (nao so abertos) — reflete melhor o volume real de trabalho
 - [Phase 999.13]: labelCounts e assigneeCounts mantidos apenas sobre tickets abertos — representam carga atual, nao historico
 - [Phase 999.13]: IN_OUT_SEMANAS=8 como constante — janela padrao de 8 semanas para visibilidade de tendencia na UI
+- [Phase 999.13]: IntelOperacionalSection inserida entre Evolucao e Analise de IA — fluxo narrativo: snapshot, tendencia, diagnostico IA
+- [Phase 999.13]: Distribuicao por Tipo standalone removida e integrada ao sub-bloco 3 de IntelOperacionalSection — elimina duplicacao e agrupa inteligencia em local unico
 
 ## Phases
 
@@ -144,6 +146,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | Phase 999.12 P01 | 2min | 2 tasks | 3 files |
 | Phase 999.12 P02 | 180 | 2 tasks | 2 files |
 | Phase 999.13 P01 | 157 | 2 tasks | 2 files |
+| Phase 999.13 P02 | 294 | 1 tasks | 2 files |
 
 ## Next Action
 

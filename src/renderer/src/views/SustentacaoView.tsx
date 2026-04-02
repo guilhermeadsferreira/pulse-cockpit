@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw, Loader2, Wrench } from 'lucide-react'
 import { useRouter } from '../router'
-import type { SupportBoardSnapshot, SustentacaoHistoryEntry } from '../types/ipc'
+import type { SupportBoardSnapshot, SustentacaoHistoryEntry, InOutSemanalEntry, RecorrenteDetectado } from '../types/ipc'
 
 /** Retorna delta absoluto vs snapshot de ~7 dias atrás. null se não há referência. */
 function getDelta(
@@ -75,6 +75,177 @@ function MiniLineChart({
         strokeLinecap="round"
       />
     </svg>
+  )
+}
+
+/**
+ * Gráfico de barras in/out semanal com SVG inline.
+ * Barras azuis (accent) = in, barras mais claras (text-muted) = out.
+ */
+function InOutBarChart({
+  entries,
+  width = 420,
+  height = 60,
+}: {
+  entries: InOutSemanalEntry[]
+  width?: number
+  height?: number
+}) {
+  if (entries.length === 0) return null
+  const maxVal = Math.max(...entries.flatMap((e) => [e.in, e.out]), 1)
+  const barGroupWidth = width / entries.length
+  const barWidth = Math.max(4, barGroupWidth * 0.35)
+  const gap = 2
+
+  return (
+    <svg width={width} height={height} style={{ overflow: 'visible', display: 'block' }}>
+      {entries.map((entry, i) => {
+        const cx = (i / entries.length) * width + barGroupWidth / 2
+        const inH = Math.max(2, (entry.in / maxVal) * (height - 4))
+        const outH = Math.max(2, (entry.out / maxVal) * (height - 4))
+        return (
+          <g key={entry.semana}>
+            {/* Barra "in" (tickets criados) — à esquerda */}
+            <rect
+              x={cx - barWidth - gap / 2}
+              y={height - inH}
+              width={barWidth}
+              height={inH}
+              fill="var(--accent)"
+              opacity={0.85}
+              rx={1}
+            />
+            {/* Barra "out" (tickets resolvidos) — à direita */}
+            <rect
+              x={cx + gap / 2}
+              y={height - outH}
+              width={barWidth}
+              height={outH}
+              fill="var(--text-muted)"
+              opacity={0.6}
+              rx={1}
+            />
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+function IntelOperacionalSection({
+  snapshot,
+}: {
+  snapshot: SupportBoardSnapshot
+}) {
+  const { inOutSemanal, recorrentesDetectados, topTipos, history } = snapshot
+
+  // Curva de backlog: ticketsAbertos por dia (do history)
+  const backlogPoints = history.slice(-30).map((e) => e.ticketsAbertos)
+
+  const hasData = inOutSemanal.length > 0 || backlogPoints.length >= 2
+  if (!hasData) return null
+
+  return (
+    <Section title="Inteligência Operacional">
+      {/* Sub-bloco 1: Vazão in/out semanal */}
+      {inOutSemanal.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+            fontFamily: 'var(--font)', marginBottom: 10,
+          }}>
+            Vazão semanal (últimas 8 semanas)
+          </div>
+          <InOutBarChart entries={inOutSemanal} />
+          <div style={{
+            display: 'flex', gap: 16, marginTop: 8,
+            fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font)',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--accent)', display: 'inline-block' }} />
+              Abertos (in)
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--text-muted)', opacity: 0.6, display: 'inline-block' }} />
+              Resolvidos (out)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-bloco 2: Curva histórica de backlog */}
+      {backlogPoints.length >= 2 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+            fontFamily: 'var(--font)', marginBottom: 10,
+          }}>
+            Backlog histórico (tickets abertos)
+          </div>
+          <MiniLineChart points={backlogPoints} width={420} height={50} color="var(--accent)" />
+        </div>
+      )}
+
+      {/* Sub-bloco 3: Top tipos (abertos + fechados 30d) */}
+      {topTipos.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+            fontFamily: 'var(--font)', marginBottom: 10,
+          }}>
+            Tipos mais frequentes (abertos + fechados 30d)
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {topTipos.map((item) => (
+              <span key={item.tipo} style={{
+                padding: '4px 12px', borderRadius: 20,
+                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                fontSize: 12.5, color: 'var(--text-secondary)', fontFamily: 'var(--font)',
+              }}>
+                {item.tipo}: <strong style={{ color: 'var(--text-primary)' }}>{item.count}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sub-bloco 4: Recorrentes detectados */}
+      {recorrentesDetectados.length > 0 && (
+        <div>
+          <div style={{
+            fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+            fontFamily: 'var(--font)', marginBottom: 10,
+          }}>
+            Candidatos a resolver na raiz (últimos 30d)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {recorrentesDetectados.map((r: RecorrenteDetectado, i: number) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px', borderRadius: 6,
+                background: 'rgba(184, 64, 64, 0.06)',
+                border: '1px solid rgba(184, 64, 64, 0.2)',
+              }}>
+                <span style={{ fontSize: 13 }}>⚠️</span>
+                <span style={{
+                  fontSize: 12.5, color: 'var(--text-primary)', fontFamily: 'var(--font)',
+                  flex: 1,
+                }}>
+                  <strong>{r.tipo}</strong>
+                  {r.label && <span style={{ color: 'var(--text-muted)' }}> · {r.label}</span>}
+                </span>
+                <span style={{
+                  fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)',
+                  fontWeight: 600,
+                }}>
+                  {r.ocorrencias}x em 30d
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Section>
   )
 }
 
@@ -346,6 +517,9 @@ export function SustentacaoView() {
           </Section>
         )}
 
+        {/* Inteligência Operacional */}
+        <IntelOperacionalSection snapshot={snapshot} />
+
         {/* Análise de IA */}
         {analysisResult && (
           <Section title="Análise de IA">
@@ -354,24 +528,6 @@ export function SustentacaoView() {
               whiteSpace: 'pre-wrap', fontFamily: 'var(--font)',
             }}>
               {analysisResult}
-            </div>
-          </Section>
-        )}
-
-        {/* Distribuição por Tipo */}
-        {snapshot.topTipos.length > 0 && (
-          <Section title="Distribuição por Tipo">
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {snapshot.topTipos.map((item) => (
-                <span key={item.tipo} style={{
-                  padding: '4px 10px', borderRadius: 20,
-                  background: 'var(--surface-2)', border: '1px solid var(--border)',
-                  fontSize: 12.5, color: 'var(--text-secondary)',
-                  fontFamily: 'var(--font)',
-                }}>
-                  {item.tipo}: <strong style={{ color: 'var(--text-primary)' }}>{item.count}</strong>
-                </span>
-              ))}
             </div>
           </Section>
         )}
