@@ -10,6 +10,7 @@ import { build1on1DeepPrompt, type OneOnOneResult } from '../prompts/1on1-deep.p
 import { validateIngestionResult, validateCerimoniaSinalResult, validateOneOnOneResult } from './SchemaValidator'
 import { PersonRegistry } from '../registry/PersonRegistry'
 import { ActionRegistry } from '../registry/ActionRegistry'
+import { SuggestionMemory } from '../registry/SuggestionMemory'
 import { DetectedRegistry } from '../registry/DetectedRegistry'
 import { DemandaRegistry } from '../registry/DemandaRegistry'
 import { CicloRegistry } from '../registry/CicloRegistry'
@@ -695,6 +696,19 @@ export class IngestionPipeline {
       // 3. Create new actions from 1on1 results
       if (oneOnOneResult.acoes_liderado.length > 0 || oneOnOneResult.sugestoes_gestor.some((s) => s.gerar_acao)) {
         actionReg.createFrom1on1Result(slug, oneOnOneResult, date, artifactFileName)
+      }
+
+      // 3b. Update SuggestionMemory with sugestoes_gestor patterns
+      if (oneOnOneResult.sugestoes_gestor.length > 0) {
+        try {
+          const acoesTipos = new Map<string, string>()
+          for (const a of oneOnOneResult.acoes_liderado) {
+            acoesTipos.set(a.descricao, a.tipo)
+          }
+          new SuggestionMemory(this.workspacePath).updateFromSugestoes(slug, oneOnOneResult.sugestoes_gestor, acoesTipos)
+        } catch (err) {
+          this.log.warn('SuggestionMemory update falhou (não crítico)', { slug, error: err instanceof Error ? err.message : String(err) })
+        }
       }
 
       // Apply priority updates from deep pass
