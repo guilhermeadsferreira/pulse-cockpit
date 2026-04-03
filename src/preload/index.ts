@@ -140,6 +140,11 @@ contextBridge.exposeInMainWorld('api', {
     run: () => ipcRenderer.invoke('audit:run'),
   },
 
+  brain: {
+    detect:    () => ipcRenderer.invoke('brain:detect'),
+    getLatest: () => ipcRenderer.invoke('brain:getLatest'),
+  },
+
   sustentacao: {
     getData:             () => ipcRenderer.invoke('sustentacao:get-data'),
     refresh:             () => ipcRenderer.invoke('sustentacao:refresh'),

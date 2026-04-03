@@ -131,12 +131,38 @@ declare global {
         syncTeamRepos: () => Promise<{ success: boolean; repos?: string[]; error?: string }>
       }
 
+      brain: {
+        detect:    () => Promise<BrainResult | { error: string }>
+        getLatest: () => Promise<BrainResult | null>
+      }
+
       sustentacao: {
         getData:     () => Promise<SupportBoardSnapshot | null>
         refresh:     () => Promise<SupportBoardSnapshot | null>
         runAnalysis: () => Promise<{ analysis?: string; error?: string } | null>
       }
     }
+  }
+
+  interface BrainRiskSignal {
+    fonte: 'saude' | 'tendencia' | 'acoes' | 'jira' | 'github' | 'sustentacao'
+    descricao: string
+    peso: number
+  }
+
+  interface BrainPersonRisk {
+    slug: string
+    nome: string
+    score: number
+    severidade: 'critica' | 'alta' | 'media'
+    sinais: BrainRiskSignal[]
+    recomendacao: string
+    timestamp: string
+  }
+
+  interface BrainResult {
+    pessoas: BrainPersonRisk[]
+    geradoEm: string
   }
 
   interface DailySummary {

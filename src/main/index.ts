@@ -26,6 +26,7 @@ import { WeeklyReportGenerator } from './external/WeeklyReportGenerator'
 import { MonthlyReportGenerator } from './external/MonthlyReportGenerator'
 import { GitHubClient } from './external/GitHubClient'
 import { SystemAuditor } from './audit/SystemAuditor'
+import { detectConvergencia, type BrainResult } from './brain/RiskDetector'
 import { fetchSupportBoardMetricsWithIssues, calcularAlertas } from './external/SupportBoardClient'
 import type { SupportBoardSnapshot, SustentacaoHistoryEntry, TicketAnalysisSnapshot, EnrichedSupportTicket } from '../renderer/src/types/ipc'
 import { buildSustentacaoPrompt } from './prompts/sustentacao-analysis.prompt'
@@ -1432,6 +1433,29 @@ function registerIpcHandlers(): void {
       return await auditor.run()
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // ── Brain — Risk Convergence ─────────────────────────────────
+
+  ipcMain.handle('brain:detect', async () => {
+    const { workspacePath } = SettingsManager.load()
+    try {
+      return await detectConvergencia(workspacePath)
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('brain:getLatest', async () => {
+    const { workspacePath } = SettingsManager.load()
+    const cachePath = join(workspacePath, '..', 'cache', 'brain-result.json')
+    try {
+      if (!existsSync(cachePath)) return null
+      const raw = readFileSync(cachePath, 'utf-8')
+      return JSON.parse(raw) as BrainResult
+    } catch {
+      return null
     }
   })
 
