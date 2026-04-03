@@ -221,7 +221,10 @@ export async function generateAgendaForPerson(
 
     const pautaRatings = registry.listPautaRatings(slug).slice(0, 5)
 
-    const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData, deltaSinceLastMeeting, pautaRatings })
+    const { SuggestionMemory: SuggestionMemoryClass } = await import('./registry/SuggestionMemory')
+    const suggestionMemorySummary = new SuggestionMemoryClass(workspacePath).buildSummary(slug)
+
+    const prompt = buildAgendaPrompt({ configYaml: configRaw, perfilMd: perfilData.raw, today, dadosStale, pautasAnteriores, openActions: enrichedActions, insightsRecentes, sinaisTerceiros, pdiEstruturado, externalData, deltaSinceLastMeeting, pautaRatings, suggestionMemorySummary })
     const result = await runWithProvider('agendaGeneration', settings, prompt, {
       claudeBinPath,
       claudeTimeoutMs: 90_000,
