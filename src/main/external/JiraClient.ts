@@ -487,7 +487,7 @@ export class JiraClient {
     return (response.comments || []).map(c => ({
       id: c.id,
       author: c.author.displayName,
-      body: extractCommentText(c.body).slice(0, 500),
+      body: extractCommentText(c.body),
       created: c.created,
       updated: c.updated,
     }))

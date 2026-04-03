@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw, Loader2, Wrench, AlertTriangle, AlertCircle } from 'lucide-react'
 import { useRouter } from '../router'
-import type { SupportBoardSnapshot, SustentacaoHistoryEntry, InOutSemanalEntry, RecorrenteDetectado, SustentacaoAlerta } from '../types/ipc'
+import type { SupportBoardSnapshot, SustentacaoHistoryEntry, InOutSemanalEntry, RecorrenteDetectado, SustentacaoAlerta, BlockerCategory, TicketAnalysisSnapshot, EnrichedSupportTicket } from '../types/ipc'
 
 /** Retorna delta absoluto vs snapshot de ~7 dias atrás. null se não há referência. */
 function getDelta(
@@ -164,6 +164,47 @@ function formatRelativeDate(isoDate: string): string {
   return 'agora'
 }
 
+const BLOCKER_COLORS: Record<BlockerCategory, { bg: string; text: string; label: string }> = {
+  fornecedor_externo: { bg: 'rgba(220,38,38,0.15)', text: '#ef4444', label: 'Fornecedor' },
+  dev:               { bg: 'rgba(59,130,246,0.15)', text: '#3b82f6', label: 'Dev' },
+  cliente:           { bg: 'rgba(234,179,8,0.15)',   text: '#eab308', label: 'Cliente' },
+  produto:           { bg: 'rgba(168,85,247,0.15)',  text: '#a855f7', label: 'Produto' },
+  deploy:            { bg: 'rgba(249,115,22,0.15)',   text: '#f97316', label: 'Deploy' },
+  desconhecido:      { bg: 'rgba(107,114,128,0.15)', text: '#6b7280', label: '?' },
+}
+
+const RISK_COLORS: Record<string, string> = {
+  critical: '#ef4444',
+  high: '#f97316',
+  medium: '#eab308',
+  low: '#22c55e',
+}
+
+function BlockerBadge({ category }: { category: BlockerCategory }) {
+  const style = BLOCKER_COLORS[category]
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '1px 7px', borderRadius: 4,
+      fontSize: 10.5, fontWeight: 600,
+      background: style.bg, color: style.text,
+      letterSpacing: '0.02em',
+    }}>
+      {style.label}
+    </span>
+  )
+}
+
+function RiskDot({ level }: { level: string }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+      background: RISK_COLORS[level] ?? RISK_COLORS.medium,
+      flexShrink: 0,
+    }} title={`Risco: ${level}`} />
+  )
+}
+
 function AlertasBanner({ alertas }: { alertas: SustentacaoAlerta[] }) {
   if (alertas.length === 0) return null
 
@@ -207,36 +248,70 @@ function AlertasBanner({ alertas }: { alertas: SustentacaoAlerta[] }) {
               <div style={{ flex: 1 }}>
                 {alerta.summary ? (
                   <>
-                    <span style={{ fontWeight: 600 }}>
-                      {alerta.jiraUrl ? (
-                        <a
-                          href="#"
-                          onClick={(e) => { e.preventDefault(); window.open(alerta.jiraUrl, '_blank') }}
-                          style={{ color: 'var(--text-secondary)', textDecoration: 'underline' }}
-                        >
-                          {alerta.ticketKey}
-                        </a>
-                      ) : (
-                        alerta.ticketKey
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600 }}>
+                        {alerta.jiraUrl ? (
+                          <a
+                            href="#"
+                            onClick={(e) => { e.preventDefault(); window.open(alerta.jiraUrl, '_blank') }}
+                            style={{ color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                          >
+                            {alerta.ticketKey}
+                          </a>
+                        ) : (
+                          alerta.ticketKey
+                        )}
+                      </span>
+                      {' — '}
+                      {alerta.summary}
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        ({alerta.mensagem.match(/(\d+)d aberto/)?.[1] ?? '?'}d
+                        {alerta.status ? `, ${alerta.status}` : ''}
+                        {alerta.assignee ? `, ${alerta.assignee}` : ''})
+                      </span>
+                      {alerta.intelligence && (
+                        <>
+                          <BlockerBadge category={alerta.intelligence.blocker.category} />
+                          <RiskDot level={alerta.intelligence.riskLevel} />
+                        </>
                       )}
-                    </span>
-                    {' — '}
-                    {alerta.summary}
-                    <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>
-                      ({alerta.mensagem.match(/(\d+)d aberto/)?.[1] ?? '?'}d
-                      {alerta.status ? `, ${alerta.status}` : ''}
-                      {alerta.assignee ? `, ${alerta.assignee}` : ''})
-                    </span>
-                    {alerta.lastComment && (
+                    </div>
+                    {alerta.intelligence ? (
+                      <div style={{ marginTop: 4, paddingLeft: 2 }}>
+                        <div style={{
+                          fontSize: 12, color: 'var(--text-secondary)',
+                          lineHeight: 1.5, marginBottom: 4,
+                          borderLeft: '2px solid var(--border)',
+                          paddingLeft: 8,
+                        }}>
+                          {alerta.intelligence.narrative}
+                        </div>
+                        <div style={{
+                          fontSize: 11.5, fontWeight: 600,
+                          color: 'var(--accent)',
+                          display: 'flex', alignItems: 'center', gap: 4,
+                        }}>
+                          → {alerta.intelligence.recommendedAction}
+                        </div>
+                        {alerta.intelligence.evolution && (
+                          <div style={{
+                            fontSize: 10.5, color: 'var(--text-muted)',
+                            marginTop: 2, fontStyle: 'italic',
+                          }}>
+                            {alerta.intelligence.evolution}
+                          </div>
+                        )}
+                      </div>
+                    ) : alerta.lastComment ? (
                       <div style={{
                         fontSize: 11.5, color: 'var(--text-muted)',
                         marginTop: 2, paddingLeft: 2,
                         fontStyle: 'italic',
                       }}>
-                        "{alerta.lastComment.body.slice(0, 120)}{alerta.lastComment.body.length > 120 ? '…' : ''}"
+                        &ldquo;{alerta.lastComment.body.slice(0, 120)}{alerta.lastComment.body.length > 120 ? '…' : ''}&rdquo;
                         {' — '}{alerta.lastComment.author}, {formatRelativeDate(alerta.lastComment.created)}
                       </div>
-                    )}
+                    ) : null}
                   </>
                 ) : (
                   alerta.mensagem
@@ -400,6 +475,7 @@ export function SustentacaoView() {
   const [error, setError] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [analyzingTickets, setAnalyzingTickets] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -443,6 +519,38 @@ export function SustentacaoView() {
       setError(err instanceof Error ? err.message : 'Erro ao analisar')
     } finally {
       setAnalyzing(false)
+    }
+  }
+
+  async function handleTicketAnalysis() {
+    if (loading || refreshing || analyzingTickets) return
+    setAnalyzingTickets(true)
+    setError(null)
+    try {
+      const result = await window.api.sustentacao.runTicketAnalysis()
+      if (result?.error) {
+        setError(result.error)
+      } else if (result?.enrichedTickets && snapshot) {
+        // Atualizar snapshot com intelligence
+        const updatedSnapshot = { ...snapshot }
+        if (result.executiveSummary) {
+          updatedSnapshot.executiveSummary = result.executiveSummary
+        }
+        // Popular intelligence nos alertas
+        for (const alerta of updatedSnapshot.alertas) {
+          if (!alerta.ticketKey) continue
+          const enriched = result.enrichedTickets.find((t: EnrichedSupportTicket) => t.key === alerta.ticketKey)
+          if (enriched?.intelligence) {
+            alerta.intelligence = enriched.intelligence
+          }
+        }
+        updatedSnapshot.enrichedTickets = result.enrichedTickets
+        setSnapshot(updatedSnapshot)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao analisar tickets')
+    } finally {
+      setAnalyzingTickets(false)
     }
   }
 
@@ -528,6 +636,22 @@ export function SustentacaoView() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={handleTicketAnalysis}
+            disabled={loading || refreshing || analyzingTickets}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 6, border: '1px solid var(--accent)',
+              background: 'rgba(131,187,120,0.1)', color: 'var(--accent)',
+              fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600,
+              cursor: loading || refreshing || analyzingTickets ? 'not-allowed' : 'pointer',
+              opacity: loading || refreshing || analyzingTickets ? 0.5 : 1,
+            }}
+          >
+            {analyzingTickets
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Analisando {snapshot?.ticketsEmBreach.length ?? ''} tickets…</>
+              : 'Analisar Tickets'}
+          </button>
           <button
             onClick={handleAnalyze}
             disabled={loading || refreshing || analyzing}
@@ -670,8 +794,78 @@ export function SustentacaoView() {
         {/* Inteligência Operacional */}
         <IntelOperacionalSection snapshot={snapshot} />
 
-        {/* Análise de IA */}
-        {analysisResult && (
+        {/* Resumo Executivo (quando análise por ticket disponível) */}
+        {snapshot.executiveSummary && (
+          <Section title="Resumo Executivo">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Risco geral */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Risco geral:</span>
+                <span style={{
+                  fontSize: 12, fontWeight: 700,
+                  color: RISK_COLORS[snapshot.executiveSummary.overallRisk] ?? 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                }}>
+                  {snapshot.executiveSummary.overallRisk}
+                </span>
+              </div>
+
+              {/* Ações prioritárias */}
+              {snapshot.executiveSummary.priorityActions.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Ações Prioritárias
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {snapshot.executiveSummary.priorityActions.map((action, i) => (
+                      <div key={i} style={{
+                        fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5,
+                        display: 'flex', gap: 8,
+                      }}>
+                        <span style={{ fontWeight: 700, color: 'var(--accent)', minWidth: 16 }}>{i + 1}.</span>
+                        {action}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Por bloqueador */}
+              {Object.entries(snapshot.executiveSummary.byBlocker).filter(([, keys]) => keys && keys.length > 0).length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Por Bloqueador
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {Object.entries(snapshot.executiveSummary.byBlocker)
+                      .filter(([, keys]) => keys && keys.length > 0)
+                      .map(([category, keys]) => (
+                        <div key={category} style={{
+                          background: 'var(--surface)', border: '1px solid var(--border)',
+                          borderRadius: 6, padding: '8px 12px',
+                          display: 'flex', flexDirection: 'column', gap: 4,
+                        }}>
+                          <BlockerBadge category={category as BlockerCategory} />
+                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                            {keys!.join(', ')}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {snapshot.previousAnalysisDate && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Comparado com análise de {new Date(snapshot.previousAnalysisDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {/* Análise de IA (agregada — fallback quando não há análise por ticket) */}
+        {analysisResult && !snapshot.executiveSummary && (
           <Section title="Análise de IA">
             <div style={{
               fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65,
@@ -695,7 +889,7 @@ export function SustentacaoView() {
               {/* Table header */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '100px 1fr 120px 140px 90px',
+                gridTemplateColumns: '90px 1fr 100px 130px 70px 80px',
                 gap: 0,
                 padding: '8px 16px',
                 background: 'var(--surface-2)',
@@ -706,51 +900,60 @@ export function SustentacaoView() {
               }}>
                 <span>Key</span>
                 <span>Summary</span>
-                <span>Tipo</span>
                 <span>Assignee</span>
-                <span style={{ textAlign: 'right' }}>Idade (d)</span>
+                <span>Bloqueador</span>
+                <span style={{ textAlign: 'right' }}>Idade</span>
+                <span>Contexto</span>
               </div>
               {/* Rows */}
-              {snapshot.ticketsEmBreach.map((ticket, idx) => (
-                <div
-                  key={ticket.key}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '100px 1fr 120px 140px 90px',
-                    gap: 0,
-                    padding: '10px 16px',
-                    background: idx % 2 === 0
-                      ? 'rgba(184, 64, 64, 0.04)'
-                      : 'rgba(184, 64, 64, 0.02)',
-                    borderBottom: idx < snapshot.ticketsEmBreach.length - 1
-                      ? '1px solid var(--border-subtle)'
-                      : 'none',
-                    fontSize: 12.5,
-                    alignItems: 'center',
-                  }}
-                >
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
-                    {ticket.key}
-                  </span>
-                  <span style={{
-                    color: 'var(--text-secondary)', overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    paddingRight: 12,
-                  }}>
-                    {ticket.summary.length > 60
-                      ? ticket.summary.slice(0, 60) + '…'
-                      : ticket.summary}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)' }}>{ticket.type}</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>{ticket.assignee ?? '—'}</span>
-                  <span style={{
-                    textAlign: 'right', fontWeight: 600,
-                    color: 'var(--red)', fontFamily: 'var(--font-mono)',
-                  }}>
-                    {ticket.ageDias}d
-                  </span>
-                </div>
-              ))}
+              {snapshot.ticketsEmBreach.map((ticket, idx) => {
+                const enriched = snapshot.enrichedTickets?.find((e) => e.key === ticket.key)
+                const intel = enriched?.intelligence
+                const blocker = intel?.blocker?.category ?? enriched?.deterministicContext?.inferredBlocker
+                return (
+                  <div
+                    key={ticket.key}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '90px 1fr 100px 130px 70px 80px',
+                      gap: 0,
+                      padding: '10px 16px',
+                      background: idx % 2 === 0
+                        ? 'rgba(184, 64, 64, 0.04)'
+                        : 'rgba(184, 64, 64, 0.02)',
+                      borderBottom: idx < snapshot.ticketsEmBreach.length - 1
+                        ? '1px solid var(--border-subtle)'
+                        : 'none',
+                      fontSize: 12.5,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                      {ticket.key}
+                    </span>
+                    <span style={{
+                      color: 'var(--text-secondary)', overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      paddingRight: 12,
+                    }} title={intel?.narrative ?? ticket.summary}>
+                      {ticket.summary.length > 50
+                        ? ticket.summary.slice(0, 50) + '…'
+                        : ticket.summary}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>{ticket.assignee ?? '—'}</span>
+                    <span>{blocker ? <BlockerBadge category={blocker} /> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}</span>
+                    <span style={{
+                      textAlign: 'right', fontWeight: 600,
+                      color: 'var(--red)', fontFamily: 'var(--font-mono)',
+                    }}>
+                      {ticket.ageDias}d
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }} title={intel?.narrative ?? ''}>
+                      {intel ? <RiskDot level={intel.riskLevel} /> : '—'}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </Section>

@@ -6,7 +6,8 @@ import type { AppSettings } from '../registry/SettingsManager'
 const log = Logger.getInstance().child('SupportBoardClient')
 
 const DEFAULT_SLA_DIAS = 5
-const BREACH_COMMENTS_MAX = 3
+const BREACH_COMMENTS_MAX = 10
+const MAX_COMMENT_FETCHES = 15
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const TOP_N = 5
 const TOP_TEMAS = 10

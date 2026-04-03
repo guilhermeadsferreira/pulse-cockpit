@@ -27,8 +27,11 @@ import { MonthlyReportGenerator } from './external/MonthlyReportGenerator'
 import { GitHubClient } from './external/GitHubClient'
 import { SystemAuditor } from './audit/SystemAuditor'
 import { fetchSupportBoardMetricsWithIssues, calcularAlertas } from './external/SupportBoardClient'
-import type { SupportBoardSnapshot, SustentacaoHistoryEntry } from '../renderer/src/types/ipc'
+import type { SupportBoardSnapshot, SustentacaoHistoryEntry, TicketAnalysisSnapshot, EnrichedSupportTicket } from '../renderer/src/types/ipc'
 import { buildSustentacaoPrompt } from './prompts/sustentacao-analysis.prompt'
+import { buildTicketAnalysisPrompt, batchTickets } from './prompts/sustentacao-ticket-analysis.prompt'
+import { buildEnrichedTicket } from './external/TicketEnricher'
+import { AnalysisSnapshotStore } from './external/AnalysisSnapshotStore'
 import { MetricsWriter } from './external/MetricsWriter'
 import yaml from 'js-yaml'
 
@@ -1208,7 +1211,49 @@ function registerIpcHandlers(): void {
   }
 
   ipcMain.handle('sustentacao:get-data', async (): Promise<SupportBoardSnapshot | null> => {
-    return fetchAndCacheSustentacao()
+    const snapshot = await fetchAndCacheSustentacao()
+    if (!snapshot) return null
+
+    // Carregar intelligence de análise recente (mesmo dia ou dia anterior)
+    try {
+      const settings = SettingsManager.load()
+      const cacheDir = join(settings.workspacePath, '..', 'cache')
+      const store = new AnalysisSnapshotStore(cacheDir)
+      const latest = store.loadLatest()
+
+      if (latest) {
+        const today = new Date().toISOString().slice(0, 10)
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        const isRecent = latest.date === today || latest.date === yesterday
+
+        if (isRecent) {
+          // Popular intelligence nos alertas que possuem ticketKey correspondente
+          for (const alerta of snapshot.alertas) {
+            if (!alerta.ticketKey) continue
+            const match = latest.tickets.find((t) => t.key === alerta.ticketKey)
+            if (match) {
+              alerta.intelligence = match.intelligence
+            }
+          }
+
+          // Popular enrichedTickets e executiveSummary no snapshot
+          snapshot.enrichedTickets = snapshot.ticketsEmBreach.map((t) => {
+            const enriched = buildEnrichedTicket(t)
+            const match = latest.tickets.find((lt) => lt.key === t.key)
+            if (match) enriched.intelligence = match.intelligence
+            return enriched
+          })
+          snapshot.executiveSummary = latest.executiveSummary
+          snapshot.previousAnalysisDate = latest.date
+        }
+      }
+    } catch (err) {
+      Logger.getInstance().child('IPC').warn('sustentacao:get-data falha ao carregar intelligence (graceful)', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    return snapshot
   })
 
   ipcMain.handle('sustentacao:refresh', async (): Promise<SupportBoardSnapshot | null> => {
@@ -1295,6 +1340,169 @@ function registerIpcHandlers(): void {
     }
 
     return { analysis }
+  })
+
+  ipcMain.handle('sustentacao:run-ticket-analysis', async (): Promise<{
+    enrichedTickets?: EnrichedSupportTicket[]
+    executiveSummary?: TicketAnalysisSnapshot['executiveSummary'] | null
+    error?: string
+  }> => {
+    const settings = SettingsManager.load()
+    const { jiraSupportProjectKey, claudeBinPath, workspacePath } = settings
+
+    if (!jiraSupportProjectKey) return { error: 'Board de sustentação não configurado' }
+    if (!claudeBinPath) return { error: 'Claude CLI não configurado. Configure o caminho em Settings.' }
+
+    const snapshot = await fetchAndCacheSustentacao()
+    if (!snapshot) return { error: 'Dados do board indisponíveis — atualize antes de analisar' }
+
+    // Identificar tickets para analisar: todos em breach + todos com alerta
+    const ticketKeysSet = new Set<string>()
+    for (const t of snapshot.ticketsEmBreach) ticketKeysSet.add(t.key)
+    for (const a of snapshot.alertas) {
+      if (a.ticketKey) ticketKeysSet.add(a.ticketKey)
+    }
+
+    // Enriquecer tickets
+    const ticketsToAnalyze = snapshot.ticketsEmBreach
+      .filter((t) => ticketKeysSet.has(t.key))
+      .sort((a, b) => b.ageDias - a.ageDias) // mais antigos primeiro
+      .slice(0, 15) // cap em MAX_COMMENT_FETCHES
+      .map(buildEnrichedTicket)
+
+    if (ticketsToAnalyze.length === 0) {
+      return { enrichedTickets: [], executiveSummary: null }
+    }
+
+    // Carregar análise anterior para evolução
+    const cacheDir = join(workspacePath, '..', 'cache')
+    const store = new AnalysisSnapshotStore(cacheDir)
+    const previousAnalysis = store.loadLatest()
+
+    // Dividir em batches e analisar
+    const batches = batchTickets(ticketsToAnalyze)
+    const allTicketKeys = ticketsToAnalyze.map((t) => t.key)
+    const allAnalyzedTickets: TicketAnalysisSnapshot['tickets'] = []
+    let executiveSummary: TicketAnalysisSnapshot['executiveSummary'] | null = null
+
+    const logCtx = Logger.getInstance().child('IPC')
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]
+      const isLastBatch = i === batches.length - 1
+      const prompt = buildTicketAnalysisPrompt(batch, previousAnalysis, isLastBatch, allTicketKeys)
+
+      logCtx.info('sustentacao:run-ticket-analysis batch', {
+        batch: i + 1,
+        total: batches.length,
+        tickets: batch.map((t) => t.key),
+        promptLength: prompt.length,
+      })
+
+      try {
+        const result = await runClaudePrompt(claudeBinPath, prompt, 60_000)
+        if (!result.success) {
+          logCtx.warn('sustentacao:run-ticket-analysis batch falhou', { batch: i + 1, error: result.error })
+          continue
+        }
+
+        const rawOutput = result.rawOutput ?? (typeof result.data === 'string' ? result.data : JSON.stringify(result.data))
+
+        // Extrair JSON do output (pode vir com markdown wrapping)
+        const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
+        if (!jsonMatch) {
+          logCtx.warn('sustentacao:run-ticket-analysis JSON não encontrado no output', { batch: i + 1 })
+          continue
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          tickets: TicketAnalysisSnapshot['tickets']
+          executiveSummary?: TicketAnalysisSnapshot['executiveSummary']
+        }
+
+        if (parsed.tickets) {
+          allAnalyzedTickets.push(...parsed.tickets)
+        }
+
+        if (isLastBatch && parsed.executiveSummary) {
+          executiveSummary = parsed.executiveSummary
+        }
+      } catch (err) {
+        logCtx.warn('sustentacao:run-ticket-analysis batch exception', {
+          batch: i + 1,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    // Popular intelligence nos enriched tickets
+    for (const enriched of ticketsToAnalyze) {
+      const match = allAnalyzedTickets.find((t) => t.key === enriched.key)
+      if (match) {
+        enriched.intelligence = match.intelligence
+      }
+    }
+
+    // Persistir snapshot de análise
+    const today = new Date().toISOString().slice(0, 10)
+    const analysisSnapshot: TicketAnalysisSnapshot = {
+      date: today,
+      fetchedAt: Date.now(),
+      tickets: allAnalyzedTickets,
+      executiveSummary: executiveSummary ?? {
+        byBlocker: {},
+        priorityActions: [],
+        overallRisk: 'medium',
+      },
+    }
+
+    store.save(analysisSnapshot)
+    store.cleanup()
+
+    logCtx.info('sustentacao:run-ticket-analysis concluída', {
+      ticketsAnalisados: allAnalyzedTickets.length,
+      totalBatches: batches.length,
+    })
+
+    // Persistir resumo no metricas.md dos assignees relevantes
+    const metricsWriter = new MetricsWriter(workspacePath)
+    const personRegistry = new PersonRegistry(workspacePath)
+    const people = personRegistry.list()
+
+    if (executiveSummary) {
+      const summaryText = `**Resumo Executivo — ${today}**\n\n` +
+        `Risco geral: ${executiveSummary.overallRisk}\n\n` +
+        `**Ações prioritárias:**\n${executiveSummary.priorityActions.map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\n` +
+        `**Por ticket:**\n${allAnalyzedTickets.map((t) => `- ${t.key}: ${t.intelligence.narrative}`).join('\n')}`
+
+      for (const [assigneeKey, count] of Object.entries(snapshot.porAssignee)) {
+        if (count < 3) continue
+        const person = people.find(
+          (p) =>
+            p.jiraEmail === assigneeKey ||
+            p.nome.toLowerCase().includes(assigneeKey.toLowerCase()) ||
+            assigneeKey.toLowerCase().includes(p.nome.split(' ')[0].toLowerCase()),
+        )
+        if (person) {
+          try {
+            metricsWriter.writeSustentacaoAnalysis(person.slug, summaryText)
+          } catch { /* graceful */ }
+        }
+      }
+    }
+
+    return { enrichedTickets: ticketsToAnalyze, executiveSummary }
+  })
+
+  ipcMain.handle('sustentacao:get-analysis-history', async (): Promise<string[]> => {
+    try {
+      const settings = SettingsManager.load()
+      const cacheDir = join(settings.workspacePath, '..', 'cache')
+      const store = new AnalysisSnapshotStore(cacheDir)
+      return store.listDates()
+    } catch {
+      return []
+    }
   })
 }
 

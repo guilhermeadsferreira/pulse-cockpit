@@ -135,8 +135,10 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   sustentacao: {
-    getData:     () => ipcRenderer.invoke('sustentacao:get-data'),
-    refresh:     () => ipcRenderer.invoke('sustentacao:refresh'),
-    runAnalysis: () => ipcRenderer.invoke('sustentacao:run-analysis'),
+    getData:             () => ipcRenderer.invoke('sustentacao:get-data'),
+    refresh:             () => ipcRenderer.invoke('sustentacao:refresh'),
+    runAnalysis:         () => ipcRenderer.invoke('sustentacao:run-analysis'),
+    runTicketAnalysis:   () => ipcRenderer.invoke('sustentacao:run-ticket-analysis'),
+    getAnalysisHistory:  () => ipcRenderer.invoke('sustentacao:get-analysis-history'),
   },
 })

@@ -203,6 +203,12 @@ export interface SupportBoardSnapshot {
   recorrentesDetectados: RecorrenteDetectado[]
   /** Alertas proativos calculados a cada refresh. Array vazio = sem alertas. */
   alertas: SustentacaoAlerta[]
+  /** Tickets enriquecidos com contexto determinístico e inteligência IA (opcional, populado após análise) */
+  enrichedTickets?: EnrichedSupportTicket[]
+  /** Resumo executivo da análise por ticket (opcional, populado após análise) */
+  executiveSummary?: TicketAnalysisSnapshot['executiveSummary'] | null
+  /** Data da análise anterior para contexto de evolução */
+  previousAnalysisDate?: string | null
 }
 
 /** Entrada de histórico diário de sustentação (sem ticketsEmBreach completo para manter history.json leve) */
@@ -219,6 +225,76 @@ export interface SustentacaoHistoryEntry {
   complianceRate7d: number | null
   /** null = sem tickets resolvidos na janela */
   complianceRate30d: number | null
+}
+
+/** Categoria de bloqueio identificada para um ticket de sustentação */
+export type BlockerCategory = 'fornecedor_externo' | 'dev' | 'cliente' | 'produto' | 'deploy' | 'desconhecido'
+
+/** Inteligência gerada por IA para um ticket individual */
+export interface TicketIntelligence {
+  /** Narrativa resumida do que está acontecendo (2-4 frases) */
+  narrative: string
+  /** Quem/o que está bloqueando progresso */
+  blocker: {
+    category: BlockerCategory
+    /** Detalhe do bloqueio (ex: "Bankly — aguardando resposta no SDK-165640") */
+    detail: string
+    /** true = inferido de status/age, false = derivado pela IA dos comentários */
+    deterministic: boolean
+  }
+  /** Ação concreta recomendada para o gestor */
+  recommendedAction: string
+  /** Nível de risco de deterioração */
+  riskLevel: 'critical' | 'high' | 'medium' | 'low'
+  /** Evolução vs análise anterior (null se primeira vez) */
+  evolution: string | null
+}
+
+/** Contexto determinístico computado antes da IA */
+export interface DeterministicContext {
+  /** Dias desde o último comentário (null se sem comentários) */
+  daysSinceLastComment: number | null
+  /** Autor do comentário mais recente */
+  lastCommentAuthor: string | null
+  /** Bloqueador inferido de status/labels (null se não identificável) */
+  inferredBlocker: BlockerCategory | null
+  /** Frescor do ticket baseado em atividade de comentários */
+  staleness: 'stale' | 'active' | 'recent'
+}
+
+/** Ticket de suporte enriquecido com contexto determinístico e inteligência IA */
+export interface EnrichedSupportTicket extends SupportTicket {
+  /** Thread completa de comentários (até 10, sem truncamento) */
+  fullComments: Array<{ author: string; body: string; created: string }>
+  /** Enriquecimento determinístico computado antes da IA */
+  deterministicContext: DeterministicContext
+  /** Inteligência gerada pela IA (null antes da análise rodar) */
+  intelligence: TicketIntelligence | null
+}
+
+/** Snapshot de análise por ticket para persistência e comparação histórica */
+export interface TicketAnalysisSnapshot {
+  /** Data da análise (YYYY-MM-DD) */
+  date: string
+  /** Timestamp Unix ms do fetch */
+  fetchedAt: number
+  /** Análises individuais por ticket */
+  tickets: Array<{
+    key: string
+    summary: string
+    status: string
+    ageDias: number
+    intelligence: TicketIntelligence
+  }>
+  /** Resumo executivo agrupado */
+  executiveSummary: {
+    /** Tickets agrupados por tipo de bloqueador */
+    byBlocker: Partial<Record<BlockerCategory, string[]>>
+    /** Top 3 ações prioritárias */
+    priorityActions: string[]
+    /** Risco geral da operação */
+    overallRisk: 'critical' | 'high' | 'medium' | 'low'
+  }
 }
 
 /** Alerta proativo calculado a cada refresh de dados de sustentacao */
@@ -241,6 +317,8 @@ export interface SustentacaoAlerta {
   lastComment?: { author: string; body: string; created: string } | null
   /** URL direta para o ticket no Jira */
   jiraUrl?: string
+  /** Inteligência por ticket gerada pela IA (null antes da análise) */
+  intelligence?: TicketIntelligence | null
 }
 
 /** Entrada de vazão semanal: tickets abertos (in) vs resolvidos (out) na semana. */
