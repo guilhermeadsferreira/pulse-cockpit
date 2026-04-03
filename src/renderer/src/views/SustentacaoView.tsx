@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw, Loader2, Wrench, AlertTriangle, AlertCircle } from 'lucide-react'
 import { useRouter } from '../router'
-import type { SupportBoardSnapshot, SustentacaoHistoryEntry, InOutSemanalEntry, RecorrenteDetectado, SustentacaoAlerta, BlockerCategory, TicketAnalysisSnapshot, EnrichedSupportTicket } from '../types/ipc'
+import type { SupportBoardSnapshot, SustentacaoHistoryEntry, InOutSemanalEntry, RecorrenteDetectado, SustentacaoAlerta, BlockerCategory } from '../types/ipc'
 
 /** Retorna delta absoluto vs snapshot de ~7 dias atrás. null se não há referência. */
 function getDelta(
@@ -473,22 +473,21 @@ export function SustentacaoView() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
-  const [analyzingTickets, setAnalyzingTickets] = useState(false)
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const data = await window.api.sustentacao.getData()
+      setSnapshot(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar dados')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function loadData() {
-      setLoading(true)
-      try {
-        const data = await window.api.sustentacao.getData()
-        setSnapshot(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro ao carregar dados')
-      } finally {
-        setLoading(false)
-      }
-    }
     loadData()
   }, [])
 
@@ -498,7 +497,6 @@ export function SustentacaoView() {
     try {
       const data = await window.api.sustentacao.refresh()
       setSnapshot(data)
-      // Notificar sidebar para atualizar badge
       window.dispatchEvent(new CustomEvent('sustentacao:refreshed'))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao atualizar')
@@ -507,50 +505,28 @@ export function SustentacaoView() {
     }
   }
 
-  async function handleAnalyze() {
+  async function handleFullAnalysis() {
     if (loading || refreshing || analyzing) return
     setAnalyzing(true)
-    setAnalysisResult(null)
     setError(null)
     try {
-      const result = await window.api.sustentacao.runAnalysis()
-      setAnalysisResult(result?.analysis ?? null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao analisar')
-    } finally {
-      setAnalyzing(false)
-    }
-  }
-
-  async function handleTicketAnalysis() {
-    if (loading || refreshing || analyzingTickets) return
-    setAnalyzingTickets(true)
-    setError(null)
-    try {
-      const result = await window.api.sustentacao.runTicketAnalysis()
-      if (result?.error) {
-        setError(result.error)
-      } else if (result?.enrichedTickets && snapshot) {
-        // Atualizar snapshot com intelligence
-        const updatedSnapshot = { ...snapshot }
-        if (result.executiveSummary) {
-          updatedSnapshot.executiveSummary = result.executiveSummary
-        }
-        // Popular intelligence nos alertas
-        for (const alerta of updatedSnapshot.alertas) {
-          if (!alerta.ticketKey) continue
-          const enriched = result.enrichedTickets.find((t: EnrichedSupportTicket) => t.key === alerta.ticketKey)
-          if (enriched?.intelligence) {
-            alerta.intelligence = enriched.intelligence
-          }
-        }
-        updatedSnapshot.enrichedTickets = result.enrichedTickets
-        setSnapshot(updatedSnapshot)
+      // Passo 1: análise do board (padrões, causa raiz)
+      try {
+        await window.api.sustentacao.runAnalysis()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erro na análise do board')
       }
+
+      // Passo 2: análise por ticket (narrativa, blocker, risco)
+      await window.api.sustentacao.runTicketAnalysis()
+
+      // Recarrega dados com intelligence atualizada
+      const data = await window.api.sustentacao.getData()
+      setSnapshot(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao analisar tickets')
     } finally {
-      setAnalyzingTickets(false)
+      setAnalyzing(false)
     }
   }
 
@@ -635,30 +611,24 @@ export function SustentacaoView() {
             Atualizado: {new Date(snapshot.atualizadoEm).toLocaleString('pt-BR')}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {snapshot?.previousAnalysisDate && (
+            <span style={{
+              fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font)',
+              marginRight: 4,
+            }}>
+              Última análise: {new Date(snapshot.previousAnalysisDate + 'T12:00:00').toLocaleDateString('pt-BR', {
+                day: '2-digit', month: '2-digit',
+              })}
+            </span>
+          )}
           <button
-            onClick={handleTicketAnalysis}
-            disabled={loading || refreshing || analyzingTickets}
+            onClick={handleFullAnalysis}
+            disabled={loading || refreshing || analyzing}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '8px 14px', borderRadius: 6, border: '1px solid var(--accent)',
               background: 'rgba(131,187,120,0.1)', color: 'var(--accent)',
-              fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600,
-              cursor: loading || refreshing || analyzingTickets ? 'not-allowed' : 'pointer',
-              opacity: loading || refreshing || analyzingTickets ? 0.5 : 1,
-            }}
-          >
-            {analyzingTickets
-              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Analisando {snapshot?.ticketsEmBreach.length ?? ''} tickets…</>
-              : 'Analisar Tickets'}
-          </button>
-          <button
-            onClick={handleAnalyze}
-            disabled={loading || refreshing || analyzing}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)',
-              background: 'var(--surface)', color: 'var(--text-secondary)',
               fontSize: 13, fontFamily: 'var(--font)', fontWeight: 600,
               cursor: loading || refreshing || analyzing ? 'not-allowed' : 'pointer',
               opacity: loading || refreshing || analyzing ? 0.5 : 1,
@@ -666,7 +636,7 @@ export function SustentacaoView() {
           >
             {analyzing
               ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Analisando…</>
-              : 'Analisar'}
+              : 'Analisar sustentação'}
           </button>
           <button
             onClick={handleRefresh}
@@ -860,18 +830,6 @@ export function SustentacaoView() {
                   Comparado com análise de {new Date(snapshot.previousAnalysisDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                 </div>
               )}
-            </div>
-          </Section>
-        )}
-
-        {/* Análise de IA (agregada — fallback quando não há análise por ticket) */}
-        {analysisResult && !snapshot.executiveSummary && (
-          <Section title="Análise de IA">
-            <div style={{
-              fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65,
-              whiteSpace: 'pre-wrap', fontFamily: 'var(--font)',
-            }}>
-              {analysisResult}
             </div>
           </Section>
         )}
