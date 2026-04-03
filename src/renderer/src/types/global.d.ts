@@ -134,12 +134,24 @@ declare global {
       brain: {
         detect:    () => Promise<BrainResult | { error: string }>
         getLatest: () => Promise<BrainResult | null>
+        runWeeklySynthesis: (slug?: string) => Promise<{ success: boolean; error?: string }>
       }
 
       sustentacao: {
         getData:     () => Promise<SupportBoardSnapshot | null>
         refresh:     () => Promise<SupportBoardSnapshot | null>
         runAnalysis: () => Promise<{ analysis?: string; error?: string } | null>
+        runTicketAnalysis: () => Promise<{
+          enrichedTickets?: EnrichedSupportTicket[]
+          executiveSummary?: TicketAnalysisSnapshot['executiveSummary'] | null
+          perAssigneeSummary?: Array<{
+            email: string; nome: string; nivel: string
+            totalTickets: number; emBreach: number; riskAlto: number
+            blockers: number; workloadExterno: string; alertas: string[]
+          }>
+          error?: string
+        }>
+        getAnalysisHistory: () => Promise<unknown>
       }
     }
   }

@@ -15,6 +15,7 @@ const CACHE_TTL_7_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 interface SchedulerState {
   lastDailyRun: string | null
+  lastWeeklyRun: string | null
   lastSprintId: number | null
   lastSprintName: string | null
 }
@@ -137,6 +138,22 @@ export class Scheduler {
         log.info(`[Brain] ${brainResult.pessoas.length} pessoa(s) em risco detectada(s)`)
       } catch (err) {
         log.warn('[Brain] Risk detection falhou (não crítico)', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    // Weekly synthesis — roda às sextas ou no primeiro acesso após sexta
+    if (this.shouldRunWeekly() && settings.claudeBinPath) {
+      try {
+        log.info('[WeeklySynthesis] Rodando síntese semanal...')
+        const { WeeklySynthesisRunner } = await import('./WeeklySynthesisRunner')
+        const runner = new WeeklySynthesisRunner(this.workspacePath)
+        await runner.runForAllLiderados(settings)
+        this.markWeeklyRun()
+        log.info('[WeeklySynthesis] Síntese semanal concluída')
+      } catch (err) {
+        log.warn('[WeeklySynthesis] falhou (não crítico)', {
           error: err instanceof Error ? err.message : String(err),
         })
       }
@@ -311,6 +328,20 @@ export class Scheduler {
     this.saveState(state)
   }
 
+  private shouldRunWeekly(): boolean {
+    const today = new Date()
+    if (today.getDay() !== 5) return false  // Only on Fridays
+    const state = this.loadState()
+    const todayStr = today.toISOString().slice(0, 10)
+    return state.lastWeeklyRun !== todayStr
+  }
+
+  private markWeeklyRun(): void {
+    const state = this.loadState()
+    state.lastWeeklyRun = new Date().toISOString().slice(0, 10)
+    this.saveState(state)
+  }
+
   // ── Sprint change detection ───────────────────────────────────
 
   private async checkSprintChange(settings: import('../registry/SettingsManager').AppSettings): Promise<void> {
@@ -388,12 +419,12 @@ export class Scheduler {
 
   private loadState(): SchedulerState {
     if (!existsSync(this.statePath)) {
-      return { lastDailyRun: null, lastSprintId: null, lastSprintName: null }
+      return { lastDailyRun: null, lastWeeklyRun: null, lastSprintId: null, lastSprintName: null }
     }
     try {
       return JSON.parse(readFileSync(this.statePath, 'utf-8')) as SchedulerState
     } catch {
-      return { lastDailyRun: null, lastSprintId: null, lastSprintName: null }
+      return { lastDailyRun: null, lastWeeklyRun: null, lastSprintId: null, lastSprintName: null }
     }
   }
 

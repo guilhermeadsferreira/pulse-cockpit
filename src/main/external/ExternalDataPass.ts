@@ -196,11 +196,31 @@ export class ExternalDataPass {
     // Load previous month data for comparison
     const previous = this.loadPreviousMonth(person.slug)
 
+    // Load full history for trend detection (up to 6 months)
+    const historico = this.loadHistorico(person.slug)
+    const historicoMensal = historico
+      ? Object.entries(historico)
+          .sort(([a], [b]) => b.localeCompare(a))
+          .slice(0, 6)
+          .map(([mes, snap]) => ({
+            mes,
+            github: snap.github?.commits30d != null ? {
+              commits30d: snap.github.commits30d ?? 0,
+              prsMerged30d: snap.github.prsMerged30d ?? 0,
+              collaborationScore: snap.github.collaborationScore ?? 0,
+            } : null,
+            jira: snap.jira?.workloadScore != null ? {
+              workloadScore: snap.jira.workloadScore ?? null,
+            } : null,
+          }))
+      : undefined
+
     const analysisInput: CrossAnalyzerInput = {
       jira: jiraMetrics,
       github: githubMetrics,
       previousJira: previous?.jira ?? null,
       previousGithub: previous?.github ?? null,
+      historicoMensal,
     }
 
     const profileContext = this.extractProfileContext(person.slug)

@@ -19,6 +19,14 @@ export function batchTickets(tickets: EnrichedSupportTicket[]): EnrichedSupportT
   return batches
 }
 
+export interface AssigneeContext {
+  nome: string
+  nivel: string
+  workloadScore: string
+  issuesAbertas: number
+  blockersAtivos: number
+}
+
 /**
  * Constrói o prompt de análise por ticket para um batch.
  *
@@ -26,12 +34,14 @@ export function batchTickets(tickets: EnrichedSupportTicket[]): EnrichedSupportT
  * @param previous - Análise anterior para tracking de evolução (null se primeira vez)
  * @param isLastBatch - Se é o último batch (gera executiveSummary apenas no último)
  * @param allTicketKeys - Todas as keys sendo analisadas (para o executiveSummary do último batch)
+ * @param assigneeContextMap - Contexto de cada assignee (opcional)
  */
 export function buildTicketAnalysisPrompt(
   tickets: EnrichedSupportTicket[],
   previous: TicketAnalysisSnapshot | null,
   isLastBatch: boolean,
-  allTicketKeys: string[] = []
+  allTicketKeys: string[] = [],
+  assigneeContextMap?: Map<string, AssigneeContext>,
 ): string {
   const previousSection = previous
     ? `## Análise Anterior (${previous.date})
@@ -55,8 +65,13 @@ ${previous.tickets.map((t) => `- ${t.key}: ${t.intelligence.narrative.slice(0, 2
         }).join('\n')
       : '  (sem comentários)'
 
+    const assigneeCtx = assigneeContextMap?.get(t.assignee ?? '')
+    const assigneeLine = assigneeCtx
+      ? `Assignee: ${assigneeCtx.nome} (${assigneeCtx.nivel}) — workload ${assigneeCtx.workloadScore}, ${assigneeCtx.issuesAbertas} issues abertas, ${assigneeCtx.blockersAtivos} blockers`
+      : `Assignee: ${t.assignee ?? 'sem assignee'}`
+
     return `### ${t.key}: ${t.summary}
-- Status: ${t.status} | Idade: ${t.ageDias}d | Assignee: ${t.assignee ?? 'sem assignee'}
+- Status: ${t.status} | Idade: ${t.ageDias}d | ${assigneeLine}
 - ${blockerHint}
 - Atividade: ${stalenessInfo}
 - Thread de comentários (cronológico):
@@ -86,6 +101,10 @@ ${previousSection}
 
 ${ticketsSection}
 ${executiveSummaryInstruction}
+
+CONTEXTO DO ASSIGNEE:
+- Se dados do assignee estiverem presentes (nome, nível, workload), considere a carga atual na avaliação do riskLevel. Um ticket de risco médio com assignee em workload alto deve ser elevado para high.
+- Se o assignee é junior e o ticket tem riskLevel high ou critical, adicione na recommendedAction: "Considerar pair com senior".
 
 IMPORTANTE:
 - Responda APENAS em JSON válido, sem markdown wrapping

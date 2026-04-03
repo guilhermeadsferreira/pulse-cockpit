@@ -29,10 +29,11 @@ export interface AgendaPromptParams {
   demandasGestor?:   string
   deltaSinceLastMeeting?: DeltaSinceLastMeeting
   pautaRatings?: Array<{ date: string; rating: string; nota?: string }>
+  suggestionMemorySummary?: string | null
 }
 
 export function buildAgendaPrompt(params: AgendaPromptParams): string {
-  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '', demandasGestor, deltaSinceLastMeeting, pautaRatings = [] } = params
+  const { configYaml, perfilMd, today, dadosStale = false, pautasAnteriores = [], openActions = [], insightsRecentes = '', sinaisTerceiros = '', pdiEstruturado = '', externalData = '', demandasGestor, deltaSinceLastMeeting, pautaRatings = [], suggestionMemorySummary } = params
 
   const pautasSection = pautasAnteriores.length > 0
     ? `\n## Histórico de pautas anteriores\n${pautasAnteriores.map(p => `### Pauta de ${p.date}\n${p.content}`).join('\n\n')}\n`
@@ -92,6 +93,10 @@ export function buildAgendaPrompt(params: AgendaPromptParams): string {
     ratingsSection = `\n## Feedback de pautas anteriores\n${summary}\nAjuste o foco da pauta com base neste feedback.\n`
   }
 
+  const memorySection = suggestionMemorySummary
+    ? `\n## Padrões históricos deste liderado\n${suggestionMemorySummary}\nRespeite esses padrões ao gerar sugestões — evite áreas de resistência e priorize áreas de receptividade.\n`
+    : ''
+
   const insightsSection = insightsRecentes
     ? `\n## Insights recentes de 1:1\n${insightsRecentes}\n`
     : ''
@@ -124,7 +129,7 @@ ${configYaml}
 
 ## Perfil vivo atual
 ${perfilMd}
-${pautasSection}${deltaSection}${ratingsSection}${acoesSection}${demandasSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
+${pautasSection}${deltaSection}${ratingsSection}${memorySection}${acoesSection}${demandasSection}${insightsSection}${sinaisSection}${pdiSection}${externalDataSection}
 ## Sua tarefa
 
 Com base no perfil acumulado, nas ações em aberto, nos insights de 1:1, sinais de terceiros e PDI, gere uma pauta completa e estruturada para o próximo 1:1. Retorne APENAS um JSON válido (sem texto antes ou depois):

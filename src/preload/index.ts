@@ -143,6 +143,7 @@ contextBridge.exposeInMainWorld('api', {
   brain: {
     detect:    () => ipcRenderer.invoke('brain:detect'),
     getLatest: () => ipcRenderer.invoke('brain:getLatest'),
+    runWeeklySynthesis: (slug?: string) => ipcRenderer.invoke('brain:runWeeklySynthesis', slug),
   },
 
   sustentacao: {

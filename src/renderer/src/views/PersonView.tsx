@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, FileText, CalendarDays, CalendarCheck, Pencil, ExternalLink, RefreshCw, Loader2, CheckSquare, Square, X, Plus, ArrowUpRight, Trash2 } from 'lucide-react'
+import { ArrowLeft, FileText, CalendarDays, CalendarCheck, Pencil, ExternalLink, RefreshCw, Loader2, CheckSquare, Square, X, Plus, ArrowUpRight, Trash2, Sparkles } from 'lucide-react'
 import { useRouter } from '../router'
 import type { PersonConfig, PerfilData, ArtifactMeta, PautaMeta, AgendaResult, Action, ActionOwner, Demanda, PDIItem } from '../types/ipc'
 import { MarkdownPreview } from '../components/MarkdownPreview'
@@ -67,6 +67,7 @@ export function PersonView() {
   const [resumoRH,      setResumoRH]      = useState<{ resumo: string; date: string | null } | null>(null)
   const [generatingAgenda, setGeneratingAgenda] = useState(false)
   const [agendaError,   setAgendaError]   = useState<string | null>(null)
+  const [generatingSynthesis, setGeneratingSynthesis] = useState(false)
   const [resetting,     setResetting]     = useState(false)
   const [prep1on1Mode,  setPrep1on1Mode]  = useState(false)
   const [lastPautaContent, setLastPautaContent] = useState<string | null>(null)
@@ -170,6 +171,17 @@ export function PersonView() {
     }
   }
 
+  async function handleGenerateSynthesis() {
+    if (!person) return
+    setGeneratingSynthesis(true)
+    try {
+      await window.api.brain.runWeeklySynthesis(person.slug)
+      await loadPerfil(person.slug)
+    } catch { /* silent */ } finally {
+      setGeneratingSynthesis(false)
+    }
+  }
+
   if (!person) {
     return <div style={{ padding: '40px', color: 'var(--text-muted)', fontSize: 13 }}>Carregando…</div>
   }
@@ -232,6 +244,18 @@ export function PersonView() {
           >
             {generatingAgenda ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <CalendarDays size={12} />}
             {generatingAgenda ? 'Gerando…' : 'Gerar pauta'}
+          </button>
+          <button
+            onClick={handleGenerateSynthesis}
+            disabled={generatingSynthesis || !perfil}
+            style={{
+              ...styles.btnSecondary,
+              opacity: (!perfil) ? 0.45 : 1,
+              cursor: (!perfil) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {generatingSynthesis ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={12} />}
+            {generatingSynthesis ? 'Gerando…' : 'Síntese'}
           </button>
           <button
             onClick={() => setActiveTab('ciclo')}

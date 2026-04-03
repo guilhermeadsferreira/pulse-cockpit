@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from 'fs'
 import { join } from 'path'
 import { PersonRegistry, type PersonConfig } from '../registry/PersonRegistry'
 import { SettingsManager, type AppSettings } from '../registry/SettingsManager'
@@ -219,6 +219,16 @@ export class DailyReportGenerator {
           metricsWriter.writeAlerts(person.slug, alerts)
         } catch (err) {
           log.warn('falha ao persistir alertas no metricas.md', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+        }
+
+        // AlertBridge: propaga blocker e wip_alto para Pontos de Atenção no perfil.md
+        const profileAlerts = alerts.filter(a => a.tipo === 'blocker' || a.tipo === 'wip_alto')
+        if (profileAlerts.length > 0) {
+          try {
+            propagateAlertsToProfile(this.workspacePath, person.slug, profileAlerts, today)
+          } catch (err) {
+            log.warn('AlertBridge: falha ao propagar para perfil.md', { slug: person.slug, error: err instanceof Error ? err.message : String(err) })
+          }
         }
       }
     }
@@ -1402,4 +1412,46 @@ async function batchParallel<T, R>(items: T[], fn: (item: T) => Promise<R>, batc
     results.push(...batchResults)
   }
   return results
+}
+
+// ── AlertBridge ──────────────────────────────────────────────────
+
+const ATENCAO_CLOSE_MARKER = '<!-- FIM BLOCO ATENCAO -->'
+
+const ALERT_LABELS: Record<AlertEntry['tipo'], string> = {
+  blocker: 'Blocker ativo',
+  wip_alto: 'WIP alto',
+  cycle_time: 'Cycle time elevado',
+}
+
+function propagateAlertsToProfile(
+  workspacePath: string,
+  slug: string,
+  alerts: AlertEntry[],
+  date: string,
+): void {
+  const perfilPath = join(workspacePath, 'pessoas', slug, 'perfil.md')
+  if (!existsSync(perfilPath)) return
+
+  let content = readFileSync(perfilPath, 'utf-8')
+  if (!content.includes(ATENCAO_CLOSE_MARKER)) return
+
+  let changed = false
+  for (const alert of alerts) {
+    const dedupeMarker = `[${date}] ${alert.tipo}`
+    if (content.includes(dedupeMarker)) continue
+
+    const label = ALERT_LABELS[alert.tipo]
+    const linha = `- **${date} (daily):** ${label}: ${alert.descricao}`
+
+    const idx = content.indexOf(ATENCAO_CLOSE_MARKER)
+    content = content.slice(0, idx) + linha + '\n' + content.slice(idx)
+    changed = true
+  }
+
+  if (!changed) return
+
+  const tmpPath = perfilPath + '.tmp'
+  writeFileSync(tmpPath, content, 'utf-8')
+  renameSync(tmpPath, perfilPath)
 }

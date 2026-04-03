@@ -14,6 +14,7 @@ export type IngestionOperation =
   | 'agendaGeneration'
   | 'cycleReport'
   | 'autoAvaliacao'
+  | 'weeklySynthesis'
 
 export interface OperationProviderConfig {
   provider: LLMProvider

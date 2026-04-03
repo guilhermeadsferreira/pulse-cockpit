@@ -17,11 +17,18 @@ export interface ProfileContext {
   ausenciaDescricao?: string
 }
 
+export interface HistoricoMensalEntry {
+  mes: string
+  github: { commits30d: number; prsMerged30d: number; collaborationScore: number } | null
+  jira: { workloadScore: string | null } | null
+}
+
 export interface CrossAnalyzerInput {
   jira: JiraPersonMetrics | null
   github: GitHubPersonMetrics | null
   previousJira: Partial<JiraPersonMetrics> | null
   previousGithub: Partial<GitHubPersonMetrics> | null
+  historicoMensal?: HistoricoMensalEntry[]
 }
 
 export interface CrossAnalyzerThresholds {
@@ -83,6 +90,10 @@ export function analyze(
       insights.push(...analyzeGrowth(input.github, input.previousGithub, t))
     }
     insights.push(...analyzeActivityDrop(input.github, input.previousGithub, t, profileContext))
+  }
+
+  if (!skipActivityAnalysis) {
+    insights.push(...analyzeTrends(input))
   }
 
   return insights
@@ -347,6 +358,73 @@ function analyzeHighlights(github: GitHubPersonMetrics): CrossInsight[] {
       evidencia: `GitHub: ${github.commits30d} commits (30d), média de ${github.commitsPorSemana}/semana`,
       acaoSugerida: 'Manter ritmo — verificar se qualidade acompanha volume no próximo 1:1',
     })
+  }
+
+  return insights
+}
+
+// ── Trend Detection (multi-período) ──────────────────────────────
+
+function analyzeTrends(input: CrossAnalyzerInput): CrossInsight[] {
+  const insights: CrossInsight[] = []
+  const hist = input.historicoMensal
+
+  if (!hist || hist.length < 2) return insights
+
+  // Workload "alto" por 3+ meses consecutivos (mais recentes)
+  const recentJira = hist.slice(0, 3).filter(h => h.jira?.workloadScore != null)
+  const workloadAltoCount = recentJira.filter(h => h.jira!.workloadScore === 'alto').length
+  if (recentJira.length >= 3 && workloadAltoCount >= 3) {
+    insights.push({
+      tipo: 'sobrecarga',
+      severidade: 'alta',
+      descricao: `Workload alto por ${workloadAltoCount} meses consecutivos`,
+      evidencia: `Histórico: ${recentJira.slice(0, 3).map(h => h.mes).join(', ')} — todos com workload alto`,
+      acaoSugerida: 'Revisar distribuição de tarefas e remover itens de baixa prioridade',
+      gerarDemanda: true,
+      causa_raiz: 'overloaded',
+    })
+  }
+
+  // Commits em queda consistente por 3+ meses
+  const commitsEntries = hist
+    .filter(h => h.github?.commits30d != null)
+    .slice(0, 4)
+  if (commitsEntries.length >= 3) {
+    const vals = commitsEntries.map(h => h.github!.commits30d)
+    // Cada mês é menor que o anterior (ordem: mais recente primeiro)
+    const quedaConsistente = vals.slice(0, -1).every((v, i) => v < vals[i + 1] * 0.85)
+    if (quedaConsistente) {
+      const display = [...vals].reverse()
+      insights.push({
+        tipo: 'gap_comunicacao',
+        severidade: 'alta',
+        descricao: `Commits em queda consistente: ${display.join(' → ')} (últimos ${vals.length} meses)`,
+        evidencia: 'Tendência de queda persistente — não é evento pontual',
+        acaoSugerida: 'Investigar causa: sobrecarga, desmotivação, ou mudança de responsabilidades',
+      })
+    }
+  }
+
+  // Collaboration score em declínio por 3+ meses
+  const collabEntries = hist
+    .filter(h => h.github?.collaborationScore != null)
+    .slice(0, 4)
+  if (collabEntries.length >= 3) {
+    const vals = collabEntries.map(h => h.github!.collaborationScore)
+    // Cada mês é menor ou igual ao anterior (ordem: mais recente primeiro)
+    const emDeclinio = vals.slice(0, -1).every((v, i) => v <= vals[i + 1])
+    const quedaTotal = vals[vals.length - 1] - vals[0]
+    if (emDeclinio && quedaTotal >= 15) {
+      const display = [...vals].reverse()
+      insights.push({
+        tipo: 'desalinhamento',
+        severidade: 'media',
+        descricao: `Collaboration score em declínio: ${display.join(' → ')} (últimos ${vals.length} meses)`,
+        evidencia: `Queda de ${quedaTotal} pontos — possível isolamento gradual`,
+        acaoSugerida: 'Verificar participação em reviews e pair programming na próxima 1:1',
+      })
+    }
   }
 
   return insights

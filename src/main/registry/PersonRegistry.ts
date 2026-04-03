@@ -76,6 +76,16 @@ export class PersonRegistry {
     }
   }
 
+  findByJiraEmail(email: string): PersonConfig | null {
+    if (!email) return null
+    const lowerEmail = email.toLowerCase()
+    return this.list().find(p =>
+      p.jiraEmail?.toLowerCase() === lowerEmail ||
+      p.nome.toLowerCase().includes(lowerEmail) ||
+      lowerEmail.includes(p.nome.split(' ')[0].toLowerCase())
+    ) ?? null
+  }
+
   get(slug: string): PersonConfig | null {
     const configPath = join(this.pessoasDir, slug, 'config.yaml')
     if (!existsSync(configPath)) return null
