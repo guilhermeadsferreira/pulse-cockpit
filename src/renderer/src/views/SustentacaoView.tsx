@@ -474,6 +474,12 @@ export function SustentacaoView() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [perAssignee, setPerAssignee] = useState<Array<{
+    email: string; nome: string; nivel: string
+    totalTickets: number; emBreach: number; riskAlto: number
+    blockers: number; workloadExterno: string; alertas: string[]
+  }>>([])
+
 
   async function loadData() {
     setLoading(true)
@@ -518,7 +524,10 @@ export function SustentacaoView() {
       }
 
       // Passo 2: análise por ticket (narrativa, blocker, risco)
-      await window.api.sustentacao.runTicketAnalysis()
+      const ticketResult = await window.api.sustentacao.runTicketAnalysis()
+      if (ticketResult.perAssigneeSummary) {
+        setPerAssignee(ticketResult.perAssigneeSummary)
+      }
 
       // Recarrega dados com intelligence atualizada
       const data = await window.api.sustentacao.getData()
@@ -830,6 +839,37 @@ export function SustentacaoView() {
                   Comparado com análise de {new Date(snapshot.previousAnalysisDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                 </div>
               )}
+            </div>
+          </Section>
+        )}
+
+        {/* Per-Assignee Summary */}
+        {perAssignee.length > 0 && (
+          <Section title="Por Pessoa">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {perAssignee.map((p) => (
+                <div key={p.email} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 12px', borderRadius: 6,
+                  background: p.alertas.length > 0 ? 'rgba(255,80,80,0.06)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${p.alertas.length > 0 ? 'rgba(255,80,80,0.15)' : 'var(--border)'}`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{p.nome}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>({p.nivel})</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{p.totalTickets} tickets</span>
+                    {p.emBreach > 0 && <span style={{ color: '#f87171', fontWeight: 600 }}>{p.emBreach} breach</span>}
+                    {p.riskAlto > 0 && <span style={{ color: '#fb923c', fontWeight: 600 }}>{p.riskAlto} risco alto</span>}
+                    {p.alertas.length > 0 && (
+                      <span style={{ fontSize: 11, color: '#f87171' }}>{p.alertas[0]}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </Section>
         )}
