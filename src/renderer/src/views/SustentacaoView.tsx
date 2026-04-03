@@ -445,18 +445,28 @@ function IntelOperacionalSection({
                 border: '1px solid rgba(184, 64, 64, 0.2)',
               }}>
                 <span style={{ fontSize: 13 }}>⚠️</span>
-                <span style={{
-                  fontSize: 12.5, color: 'var(--text-primary)', fontFamily: 'var(--font)',
-                  flex: 1,
-                }}>
-                  <strong>{r.tipo}</strong>
-                  {r.label && <span style={{ color: 'var(--text-muted)' }}> · {r.label}</span>}
-                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{
+                    fontSize: 12.5, color: 'var(--text-primary)', fontFamily: 'var(--font)',
+                    fontWeight: 600, textTransform: 'capitalize',
+                  }}>
+                    {r.tema}
+                  </span>
+                  {r.exemplos?.length > 0 && (
+                    <div style={{
+                      fontSize: 11, color: 'var(--text-muted)', marginTop: 2,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {r.exemplos[0]}
+                      {r.exemplos.length > 1 ? ` +${r.exemplos.length - 1} similar` : ''}
+                    </div>
+                  )}
+                </div>
                 <span style={{
                   fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)',
-                  fontWeight: 600,
+                  fontWeight: 600, flexShrink: 0,
                 }}>
-                  {r.ocorrencias}x em 30d
+                  {r.ocorrencias}x
                 </span>
               </div>
             ))}
