@@ -13,6 +13,7 @@ export type ViewName =
   | 'reports'
   | 'audit'
   | 'sustentacao'
+  | 'calibracao'
 
 interface RouterEntry {
   view: ViewName

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Grid2X2, Inbox, Settings, ScrollText, User, BarChart3, Wrench } from 'lucide-react'
+import { Grid2X2, Inbox, Settings, ScrollText, User, BarChart3, Wrench, Scale } from 'lucide-react'
 import { useRouter, type ViewName } from '../router'
 import type { Demanda, SupportBoardSnapshot } from '../types/ipc'
 
@@ -65,6 +65,7 @@ export function Sidebar() {
     { id: 'inbox',        label: 'Inbox',        icon: <Inbox size={14} /> },
     { id: 'sustentacao',  label: 'Sustentação',  icon: <Wrench size={14} />, badge: alertasCount > 0 ? alertasCount : undefined },
     { id: 'reports',      label: 'Relatórios',   icon: <BarChart3 size={14} /> },
+    { id: 'calibracao',   label: 'Calibração',   icon: <Scale size={14} /> },
     { id: 'eu',           label: 'Eu',           icon: <User size={14} />, badge: openDemandasCount > 0 ? openDemandasCount : undefined },
     { id: 'feed',         label: 'Histórico',    icon: <ScrollText size={14} /> },
   ]

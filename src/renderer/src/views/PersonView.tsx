@@ -128,6 +128,11 @@ export function PersonView() {
     loadActions(params.slug)
     loadGestorDemandas(params.slug)
     loadResumoRH(params.slug)
+    // Deep-link: open specific tab if passed via navigate params
+    const validTabs = ['perfil', 'artefatos', 'pautas', 'acoes', 'ciclo', 'dados-ext'] as const
+    if (params.tab && (validTabs as readonly string[]).includes(params.tab)) {
+      setActiveTab(params.tab as typeof validTabs[number])
+    }
   }, [params.slug, loadPerfil, loadPautas, loadActions, loadGestorDemandas, loadResumoRH])
 
   // Refresh on ingestion completed
