@@ -196,6 +196,7 @@ export function DashboardView({ relacao: relacaoProp = 'liderado' }: { relacao?:
   const [crossTeamInsights, setCrossTeamInsights] = useState<Array<{
     tipo: string; descricao: string; pessoas: string[]; severidade: 'alta' | 'media' | 'baixa'
   }>>([])
+  const [brainResult, setBrainResult] = useState<BrainResult | null>(null)
 
   const meta = RELACAO_META[relacao] ?? RELACAO_META['liderado']
 
@@ -268,6 +269,14 @@ export function DashboardView({ relacao: relacaoProp = 'liderado' }: { relacao?:
         setCrossTeamInsights(insights)
       } catch {
         setCrossTeamInsights([])
+      }
+
+      // Load Brain risk convergence
+      try {
+        const brain = await window.api.brain.getLatest()
+        setBrainResult(brain)
+      } catch {
+        setBrainResult(null)
       }
     }
 
@@ -436,6 +445,11 @@ export function DashboardView({ relacao: relacaoProp = 'liderado' }: { relacao?:
                     <AlertCircle size={13} />
                     {staleCount} {staleCount === 1 ? 'pessoa sem' : 'pessoas sem'} dados há 30+ dias
                   </div>
+                )}
+
+                {/* Brain — convergência de risco */}
+                {relacao === 'liderado' && brainResult && brainResult.pessoas.length > 0 && (
+                  <BrainAlertPanel result={brainResult} onNavigate={(slug) => navigate('person', { slug })} />
                 )}
 
                 {/* Morning briefing */}
@@ -629,6 +643,112 @@ export function DashboardView({ relacao: relacaoProp = 'liderado' }: { relacao?:
             )}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function BrainAlertPanel({ result, onNavigate }: {
+  result: BrainResult
+  onNavigate: (slug: string) => void
+}) {
+  const severityMeta: Record<string, { color: string; label: string; bg: string; border: string }> = {
+    critica: { color: 'var(--red)', label: 'CRÍTICO', bg: 'rgba(184,64,64,0.08)', border: 'rgba(184,64,64,0.25)' },
+    alta:    { color: 'var(--yellow, #d4a843)', label: 'ALTO', bg: 'rgba(212,168,67,0.08)', border: 'rgba(212,168,67,0.25)' },
+    media:   { color: 'var(--text-muted)', label: 'MÉDIO', bg: 'rgba(100,120,160,0.08)', border: 'rgba(100,120,160,0.2)' },
+  }
+
+  return (
+    <div style={{
+      marginBottom: 20,
+      background: 'rgba(184,64,64,0.04)',
+      border: '1px solid rgba(184,64,64,0.2)',
+      borderRadius: 'var(--r)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '10px 16px',
+        borderBottom: '1px solid rgba(184,64,64,0.12)',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <AlertCircle size={13} color="var(--red)" />
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: 'var(--red)',
+          letterSpacing: '0.05em', textTransform: 'uppercase',
+        }}>
+          Convergência de risco
+        </span>
+        <span style={{
+          fontSize: 10, padding: '1px 6px', borderRadius: 20,
+          background: 'rgba(184,64,64,0.12)', color: 'var(--red)',
+          fontFamily: 'var(--font-mono)',
+        }}>
+          {result.pessoas.length}
+        </span>
+        {result.geradoEm && (
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            {new Date(result.geradoEm).toLocaleDateString('pt-BR')} {new Date(result.geradoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+      </div>
+      <div style={{ padding: '6px 16px 10px' }}>
+        {result.pessoas.map((p) => {
+          const meta = severityMeta[p.severidade] ?? severityMeta.media
+          return (
+            <div key={p.slug} style={{
+              padding: '10px 0',
+              borderBottom: '1px solid rgba(184,64,64,0.08)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    background: meta.color, flexShrink: 0,
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {p.nome}
+                  </span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
+                    background: meta.bg, border: `1px solid ${meta.border}`,
+                    color: meta.color, letterSpacing: '0.05em',
+                  }}>
+                    {meta.label}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onNavigate(p.slug)}
+                  style={{
+                    fontSize: 11, color: 'var(--accent)', background: 'none',
+                    border: 'none', cursor: 'pointer', fontFamily: 'var(--font)',
+                    padding: '2px 4px',
+                  }}
+                >
+                  Abrir perfil →
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, marginLeft: 15 }}>
+                {p.sinais.map((s, i) => (
+                  <span key={i} style={{
+                    fontSize: 10.5, padding: '2px 8px', borderRadius: 3,
+                    background: 'var(--surface-2)', color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    {s.descricao}
+                  </span>
+                ))}
+              </div>
+
+              <div style={{
+                marginTop: 6, marginLeft: 15,
+                fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic',
+              }}>
+                → {p.recomendacao}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
