@@ -156,6 +156,14 @@ See: `.planning/PROJECT.md` (updated 2026-03-26)
 | Phase 999.14 P01 | 4min | 2 tasks | 3 files |
 | Phase 999.14 P02 | 83 | 2 tasks | 2 files |
 
+## Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260406-ftk | Revisar interface de Sustentação: alertas ativos no scroll e layout corrigido | 2026-04-06 | b3b53e8 | [260406-ftk-revisar-interface-de-sustentacao-alertas](./quick/260406-ftk-revisar-interface-de-sustentacao-alertas/) |
+
 ## Next Action
+
+Last activity: 2026-04-06 - Completed quick task 260406-ftk: Revisar interface de Sustentação alertas ativos devem fazer parte do scroll e corrigir layout quebrado
 
 Plan 999.7-01 concluido. Proximo: 999.7-02 (integracao Sprint e Monthly).

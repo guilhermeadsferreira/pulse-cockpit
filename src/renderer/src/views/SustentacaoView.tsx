@@ -214,8 +214,8 @@ function AlertCard({ alerta }: { alerta: SustentacaoAlerta }) {
     <div style={{
       display: 'flex', flexDirection: 'column',
       borderRadius: 6, overflow: 'hidden',
-      background: isCritico ? 'rgba(184,64,64,0.08)' : 'rgba(255,255,255,0.03)',
-      border: `1px solid ${isCritico ? 'rgba(184,64,64,0.2)' : 'var(--border)'}`,
+      background: isCritico ? 'rgba(184,64,64,0.10)' : 'var(--surface)',
+      border: `1px solid ${isCritico ? 'rgba(184,64,64,0.25)' : 'var(--border)'}`,
     }}>
       {/* Header */}
       <div
@@ -258,16 +258,16 @@ function AlertCard({ alerta }: { alerta: SustentacaoAlerta }) {
             )}
           </div>
           {alerta.summary ? (
-            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginTop: 2 }}>
               {alerta.summary}
-              <span style={{ color: 'var(--text-muted)', fontSize: 11.5, marginLeft: 6 }}>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginLeft: 6 }}>
                 ({alerta.mensagem.match(/(\d+)d aberto/)?.[1] ?? '?'}d
                 {alerta.status ? `, ${alerta.status}` : ''}
                 {alerta.assignee ? `, ${alerta.assignee}` : ''})
               </span>
             </div>
           ) : (
-            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginTop: 2 }}>
               {alerta.mensagem}
             </div>
           )}
@@ -287,11 +287,11 @@ function AlertCard({ alerta }: { alerta: SustentacaoAlerta }) {
         }}>
           {alerta.intelligence?.narrative && (
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
                 Análise IA
               </div>
               <div style={{
-                fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5,
+                fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.5,
                 borderLeft: '2px solid var(--border)', paddingLeft: 8,
               }}>
                 {alerta.intelligence.narrative}
@@ -302,7 +302,7 @@ function AlertCard({ alerta }: { alerta: SustentacaoAlerta }) {
                 </div>
               )}
               {alerta.intelligence.evolution && (
-                <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic' }}>
+                <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2, fontStyle: 'italic' }}>
                   {alerta.intelligence.evolution}
                 </div>
               )}
@@ -311,24 +311,24 @@ function AlertCard({ alerta }: { alerta: SustentacaoAlerta }) {
 
           {alerta.comments && alerta.comments.length > 0 && (
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                 Histórico de comentários · {alerta.comments.length} mensage{alerta.comments.length > 1 ? 'ns' : 'm'}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
                 {alerta.comments.map((c, ci) => {
                   const isLast = ci === alerta.comments!.length - 1
                   return (
                     <div key={ci} style={{
-                      borderLeft: `2px solid ${isLast ? 'var(--accent)' : 'var(--border)'}`,
+                      borderLeft: `2px solid ${isLast ? 'var(--accent)' : 'rgba(255,255,255,0.12)'}`,
                       paddingLeft: 8,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{c.author}</span>
-                        <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author}</span>
+                        <span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>
                           {new Date(c.created).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                         {c.body}
                       </div>
                     </div>
@@ -339,7 +339,7 @@ function AlertCard({ alerta }: { alerta: SustentacaoAlerta }) {
           )}
 
           {!alerta.intelligence?.narrative && (!alerta.comments || alerta.comments.length === 0) && (
-            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
               Clique em &ldquo;Analisar sustentação&rdquo; para gerar análise detalhada.
             </div>
           )}
@@ -360,7 +360,7 @@ function AlertasBanner({ alertas }: { alertas: SustentacaoAlerta[] }) {
 
   return (
     <div style={{
-      margin: '0 40px 16px',
+      marginBottom: 20,
       display: 'flex', flexDirection: 'column', gap: 6,
     }}>
       <div style={{
@@ -368,6 +368,7 @@ function AlertasBanner({ alertas }: { alertas: SustentacaoAlerta[] }) {
         fontSize: 12.5, fontWeight: 600,
         color: 'var(--red)',
         fontFamily: 'var(--font)',
+        marginBottom: 8,
       }}>
         <AlertTriangle size={13} />
         {sorted.length} ALERTA{sorted.length > 1 ? 'S' : ''} ATIVO{sorted.length > 1 ? 'S' : ''}
@@ -607,7 +608,7 @@ export function SustentacaoView() {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', flexDirection: 'column', gap: 12,
+        flex: 1, flexDirection: 'column', gap: 12,
         color: 'var(--text-muted)', fontFamily: 'var(--font)',
       }}>
         <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
@@ -620,7 +621,7 @@ export function SustentacaoView() {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', padding: 40,
+        flex: 1, padding: 40,
       }}>
         <div style={{
           background: 'var(--surface)', border: '1px solid var(--border)',
@@ -665,7 +666,7 @@ export function SustentacaoView() {
   const deltaBreach = getDelta(breachCount, snapshot.history, 'breachCount')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
         padding: '28px 40px 22px',
@@ -752,13 +753,13 @@ export function SustentacaoView() {
         </div>
       )}
 
-      {/* Alertas proativos — visivel quando snapshot tem alertas ativos */}
-      {snapshot.alertas && snapshot.alertas.length > 0 && (
-        <AlertasBanner alertas={snapshot.alertas} />
-      )}
-
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '28px 40px' }}>
+        {/* Alertas proativos — integrado ao scroll */}
+        {snapshot.alertas && snapshot.alertas.length > 0 && (
+          <AlertasBanner alertas={snapshot.alertas} />
+        )}
+
         {/* Row 1: Compliance cards (novos) */}
         <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
           <div style={{
